@@ -23,6 +23,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # 默认 GITHUB_TOKEN 只有读权限，创建 Release 会报
+    # "Resource not accessible by integration"，这里显式放开 contents 写权限
+    permissions:
+      contents: write
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
