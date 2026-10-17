@@ -4,7 +4,7 @@
   "webDir": "www",
   "loggingEnabled": false,
   "server": {
-    "url": "https://zhipei-one.pages.dev",
+    "url": "https://tianyou-zhipei.pages.dev",
     "androidScheme": "https",
     "cleartext": false,
     "errorPath": "offline.html"
