@@ -23,6 +23,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -88,11 +90,31 @@ jobs:
 
       - name: 构建 Debug APK
         if: ${{ inputs.build_type != 'release' }}
-        run: cd android && ./gradlew assembleDebug --no-daemon
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon 2>&1 | tee ../../gradle-debug.log
+          exit ${PIPESTATUS[0]}
 
       - name: 构建 Release APK
         if: ${{ inputs.build_type != 'debug' }}
-        run: cd android && ./gradlew assembleRelease --no-daemon ${{ env.SIGN_ARGS }}
+        run: |
+          cd android
+          ./gradlew assembleRelease --no-daemon ${{ env.SIGN_ARGS }} 2>&1 | tee ../../gradle-release.log
+          exit ${PIPESTATUS[0]}
+
+      - name: 导出构建日志
+        if: failure()
+        run: |
+          mkdir -p ci-logs
+          [ -f gradle-debug.log ] && cp gradle-debug.log ci-logs/debug.log || true
+          [ -f gradle-release.log ] && cp gradle-release.log ci-logs/release.log || true
+          git config user.name "ci-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q -B ci-logs
+          git add -f ci-logs
+          git commit -q -m "ci: 构建日志 run ${{ github.run_number }}" || exit 0
+          git push -q -f origin ci-logs || exit 0
+          echo "日志已推送到 ci-logs 分支"
 
       - name: 整理产物
         shell: bash
