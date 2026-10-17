@@ -33,8 +33,8 @@ jobs:
         id: ver
         shell: bash
         run: |
-          if [ -n "${{ inputs.version_name }}" ]; then
-            NAME="${{ inputs.version_name }}"
+          if [ -n "${{ github.event.inputs.version_name }}" ]; then
+            NAME="${{ github.event.inputs.version_name }}"
           elif [ "${{ github.ref_type }}" = "tag" ]; then
             NAME="${GITHUB_REF_NAME#v}"
           else
@@ -66,13 +66,13 @@ jobs:
           npm ci 2>&1 | tee ci-logs/npm.log
 
       - name: 指定线上地址
-        if: ${{ inputs.web_url != '' }}
+        if: ${{ github.event.inputs.web_url != '' }}
         shell: bash
         run: |
           node -e "
             const fs=require('fs');const p='capacitor.config.json';
             const c=JSON.parse(fs.readFileSync(p,'utf8'));
-            c.server={...(c.server||{}),url:'${{ inputs.web_url }}',androidScheme:'https'};
+            c.server={...(c.server||{}),url:'${{ github.event.inputs.web_url }}',androidScheme:'https'};
             fs.writeFileSync(p,JSON.stringify(c,null,2)+'\n');
           "
 
@@ -96,7 +96,7 @@ jobs:
           echo "SIGN_ARGS=-Pandroid.injected.signing.store.file=app/zhipei.jks -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}" >> "$GITHUB_ENV"
 
       - name: 构建 Debug APK
-        if: ${{ inputs.build_type != 'release' }}
+        if: ${{ github.event.inputs.build_type != 'release' }}
         run: |
           set -o pipefail
           mkdir -p ci-logs
@@ -104,7 +104,7 @@ jobs:
           ./gradlew assembleDebug --no-daemon 2>&1 | tee ../ci-logs/gradle-debug.log
 
       - name: 构建 Release APK
-        if: ${{ inputs.build_type != 'debug' }}
+        if: ${{ github.event.inputs.build_type != 'debug' }}
         run: |
           set -o pipefail
           mkdir -p ci-logs
