@@ -1,0 +1,31 @@
+name: Probe Android
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: 安装依赖
+        run: |
+          set -o pipefail
+          npm ci 2>&1 | tail -5
+      - name: 同步
+        run: npx cap sync android 2>&1 | tail -5
+      - name: 构建
+        run: |
+          set -o pipefail
+          cd android
+          ./gradlew assembleDebug --no-daemon 2>&1 | tail -60
