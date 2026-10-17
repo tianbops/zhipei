@@ -4,6 +4,10 @@ import android.os.Bundle;
 import android.webkit.WebView;
 import android.widget.Toast;
 
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
+
 import com.getcapacitor.BridgeActivity;
 
 /**
@@ -38,6 +42,23 @@ public class MainActivity extends BridgeActivity {
         // 导致标题与正文重叠、控件溢出（网页的「外观模式-跟随系统」下尤其明显）。
         // 网页自带「全局文字大小」滑杆，想要大字由它控制，布局不会乱。
         webView.getSettings().setTextZoom(100);
+        applyTopInset(webView);
+    }
+
+    /**
+     * targetSdk 35 起 Android 强制 edge-to-edge，App 内容会顶到状态栏/挖孔下面，
+     * 造成页面标题与系统时间、电量图标重叠。这里把状态栏和刘海的高度转成
+     * WebView 的顶部内边距，让页面内容从系统栏下方开始。
+     */
+    private void applyTopInset(WebView webView) {
+        ViewCompat.setOnApplyWindowInsetsListener(webView, (v, windowInsets) -> {
+            Insets bars = windowInsets.getInsets(
+                    WindowInsetsCompat.Type.statusBars()
+                            | WindowInsetsCompat.Type.displayCutout());
+            v.setPadding(0, bars.top, 0, 0);
+            return windowInsets;
+        });
+        ViewCompat.requestApplyInsets(webView);
     }
 
     @Override
