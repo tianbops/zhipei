@@ -53,6 +53,9 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: 配置 Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: 安装依赖
         run: npm ci
 
