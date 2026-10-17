@@ -59,7 +59,10 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: 安装依赖
-        run: npm ci
+        run: |
+          set -o pipefail
+          mkdir -p ci-logs
+          npm ci 2>&1 | tee ci-logs/npm.log
 
       - name: 指定线上地址
         if: ${{ inputs.web_url != '' }}
@@ -73,7 +76,10 @@ jobs:
           "
 
       - name: 同步 Capacitor
-        run: npx cap sync android
+        run: |
+          set -o pipefail
+          mkdir -p ci-logs
+          npx cap sync android 2>&1 | tee ci-logs/cap-sync.log
 
       - name: 写入版本号
         shell: bash
@@ -91,30 +97,18 @@ jobs:
       - name: 构建 Debug APK
         if: ${{ inputs.build_type != 'release' }}
         run: |
+          set -o pipefail
+          mkdir -p ci-logs
           cd android
-          ./gradlew assembleDebug --no-daemon 2>&1 | tee ../../gradle-debug.log
-          exit ${PIPESTATUS[0]}
+          ./gradlew assembleDebug --no-daemon 2>&1 | tee ../ci-logs/gradle-debug.log
 
       - name: 构建 Release APK
         if: ${{ inputs.build_type != 'debug' }}
         run: |
-          cd android
-          ./gradlew assembleRelease --no-daemon ${{ env.SIGN_ARGS }} 2>&1 | tee ../../gradle-release.log
-          exit ${PIPESTATUS[0]}
-
-      - name: 导出构建日志
-        if: failure()
-        run: |
+          set -o pipefail
           mkdir -p ci-logs
-          [ -f gradle-debug.log ] && cp gradle-debug.log ci-logs/debug.log || true
-          [ -f gradle-release.log ] && cp gradle-release.log ci-logs/release.log || true
-          git config user.name "ci-bot"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -q -B ci-logs
-          git add -f ci-logs
-          git commit -q -m "ci: 构建日志 run ${{ github.run_number }}" || exit 0
-          git push -q -f origin ci-logs || exit 0
-          echo "日志已推送到 ci-logs 分支"
+          cd android
+          ./gradlew assembleRelease --no-daemon ${{ env.SIGN_ARGS }} 2>&1 | tee ../ci-logs/gradle-release.log
 
       - name: 整理产物
         shell: bash
@@ -136,3 +130,16 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.apk
+
+      - name: 导出构建日志
+        if: always()
+        run: |
+          mkdir -p ci-logs
+          { echo "run=${{ github.run_number }}"; echo "sha=${{ github.sha }}"; echo "java=$(java -version 2>&1 | head -1)"; echo "ANDROID_HOME=$ANDROID_HOME"; ls -la android/app/src/main/res/values/ android/app/src/main/res/drawable/ 2>/dev/null; } > ci-logs/env.txt 2>&1 || true
+          git config user.name "ci-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q -B ci-logs || git checkout -q ci-logs
+          git add -f ci-logs
+          git commit -q -m "ci: 构建日志 run ${{ github.run_number }}" || echo "无新增日志"
+          git push -q -f origin ci-logs || echo "推送日志分支失败"
+          echo "日志已推送到 ci-logs 分支"
