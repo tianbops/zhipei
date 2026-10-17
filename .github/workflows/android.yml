@@ -89,12 +89,23 @@ jobs:
           sed -i "s/versionCode .*/versionCode ${{ steps.ver.outputs.code }}/" android/app/build.gradle
           sed -i "s/versionName .*/versionName \"${{ steps.ver.outputs.name }}\"/" android/app/build.gradle
 
+      # 注意：secrets 上下文不能出现在 if 条件里（会导致整个 workflow 编译失败、一个 job 都起不来），
+      # 只能通过 env 传进来，在脚本内部判断是否配置。
       - name: 准备签名
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         shell: bash
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/zhipei.jks
-          echo "SIGN_ARGS=-Pandroid.injected.signing.store.file=app/zhipei.jks -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}" >> "$GITHUB_ENV"
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "未配置签名密钥，release 将产出未签名包"
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/zhipei.jks
+          echo "SIGN_ARGS=-Pandroid.injected.signing.store.file=app/zhipei.jks -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD -Pandroid.injected.signing.key.alias=$KEY_ALIAS -Pandroid.injected.signing.key.password=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "签名密钥已就绪"
 
       - name: 构建 Debug APK
         if: ${{ github.event.inputs.build_type != 'release' }}
