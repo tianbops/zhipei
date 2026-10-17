@@ -1,0 +1,19 @@
+{
+  "name": "zhipei-one-android",
+  "version": "1.0.0",
+  "private": true,
+  "description": "智配One 安卓 App（Capacitor 壳，加载线上 web，与 web 端共用同一套页面与数据）",
+  "scripts": {
+    "android:icons": "python scripts/gen-icons.py",
+    "android:sync": "npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:apk": "cd android && ./gradlew assembleDebug --no-daemon",
+    "android:release": "cd android && ./gradlew assembleRelease --no-daemon",
+    "android:aab": "cd android && ./gradlew bundleRelease --no-daemon"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/core": "^7.0.0"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "appId": "com.tianbops.zhipei",
+  "appName": "智配One",
+  "webDir": "www",
+  "loggingEnabled": false,
+  "server": {
+    "url": "https://zhipei-one.pages.dev",
+    "androidScheme": "https",
+    "cleartext": false,
+    "errorPath": "offline.html"
+  },
+  "android": {
+    "webContentsDebuggingEnabled": false,
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "backgroundColor": "#05070A",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "overlaysWebView": false,
+      "style": "LIGHTCONTENT",
+      "backgroundColor": "#05070A"
+    },
+    "Keyboard": {
+      "resize": "body"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+node_modules/
+
+# 安卓构建产物
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+android/local.properties
+
+# Capacitor 同步生成的产物，CI 会重新生成
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/res/xml/config.xml
+
+# 签名密钥，绝不入库
+*.jks
+*.keystore
+keystore.properties
+
+# 打包产物
+*.apk
+*.aab
+dist/

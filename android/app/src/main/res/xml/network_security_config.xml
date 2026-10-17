@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Capacitor 内置网页跑在 https://localhost 或 https://<appId> 下，
+  这里放行本域名；同时允许明文 http，方便 web 端调用内网/测试接口。
+  正式上线如果全部接口都是 https，建议把下面 cleartext 两个 domain-config 删掉。
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">10.0.0.0/8</domain>
+    </domain-config>
+</network-security-config>
