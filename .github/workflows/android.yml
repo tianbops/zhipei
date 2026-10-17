@@ -107,7 +107,11 @@ jobs:
             exit 0
           fi
           echo "$KEYSTORE_BASE64" | base64 -d > android/app/zhipei.jks
-          echo "SIGN_ARGS=-Pandroid.injected.signing.store.file=app/zhipei.jks -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD -Pandroid.injected.signing.key.alias=$KEY_ALIAS -Pandroid.injected.signing.key.password=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          # 必须用绝对路径：android.injected.signing.store.file 的相对路径是相对
+          # 模块目录 android/app 解析的，写 app/zhipei.jks 会去找 android/app/app/zhipei.jks
+          KS="$GITHUB_WORKSPACE/android/app/zhipei.jks"
+          ls -l "$KS"
+          echo "SIGN_ARGS=-Pandroid.injected.signing.store.file=$KS -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD -Pandroid.injected.signing.key.alias=$KEY_ALIAS -Pandroid.injected.signing.key.password=$KEY_PASSWORD" >> "$GITHUB_ENV"
           echo "签名密钥已就绪"
 
       # 在 Windows 上提交的 gradlew 会丢掉可执行位（core.fileMode 默认 false），
