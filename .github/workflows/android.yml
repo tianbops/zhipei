@@ -55,8 +55,9 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: 配置 Android SDK
-        uses: android-actions/setup-android@v3
+      # 不要用 android-actions/setup-android：它会执行 `sdkmanager tools`，
+      # 新版 cmdline-tools 已移除 tools 包，直接报 "Failed to find package 'tools'" 退出。
+      # ubuntu-latest 镜像自带 SDK（ANDROID_HOME=/usr/local/lib/android/sdk），够用。
 
       - name: 安装依赖
         run: |
