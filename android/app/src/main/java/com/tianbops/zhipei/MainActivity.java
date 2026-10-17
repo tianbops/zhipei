@@ -34,6 +34,10 @@ public class MainActivity extends BridgeActivity {
         webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
         webView.getSettings().setUseWideViewPort(true);
         webView.getSettings().setLoadWithOverviewMode(true);
+        // 锁定 WebView 文字缩放为 100%：系统字体缩放会在网页自身字号之上再叠加放大，
+        // 导致标题与正文重叠、控件溢出（网页的「外观模式-跟随系统」下尤其明显）。
+        // 网页自带「全局文字大小」滑杆，想要大字由它控制，布局不会乱。
+        webView.getSettings().setTextZoom(100);
     }
 
     @Override
