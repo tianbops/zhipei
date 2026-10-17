@@ -1,12 +1,17 @@
 package com.tianbops.zhipei;
 
+import android.content.res.Configuration;
+import android.graphics.Color;
 import android.os.Bundle;
+import android.view.View;
 import android.webkit.WebView;
 import android.widget.Toast;
 
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -42,23 +47,48 @@ public class MainActivity extends BridgeActivity {
         // 导致标题与正文重叠、控件溢出（网页的「外观模式-跟随系统」下尤其明显）。
         // 网页自带「全局文字大小」滑杆，想要大字由它控制，布局不会乱。
         webView.getSettings().setTextZoom(100);
-        applyTopInset(webView);
+        applySystemBarInsets(webView);
+        applyStatusBarAppearance();
     }
 
     /**
-     * targetSdk 35 起 Android 强制 edge-to-edge，App 内容会顶到状态栏/挖孔下面，
-     * 造成页面标题与系统时间、电量图标重叠。这里把状态栏和刘海的高度转成
-     * WebView 的顶部内边距，让页面内容从系统栏下方开始。
+     * targetSdk 35 起 Android 强制 edge-to-edge，App 内容会顶到状态栏/刘海/手势条下面。
+     * 监听挂在 DecorView 上（根视图，必定收到 inset 派发），把系统栏高度换算成
+     * WebView 的上下内边距，让所有页面内容都落在安全区内。
+     * 另外先用系统 status_bar_height 资源兜底，避免 insets 派发前首帧顶到状态栏。
      */
-    private void applyTopInset(WebView webView) {
-        ViewCompat.setOnApplyWindowInsetsListener(webView, (v, windowInsets) -> {
-            Insets bars = windowInsets.getInsets(
+    private void applySystemBarInsets(WebView webView) {
+        int id = getResources().getIdentifier("status_bar_height", "dimen", "android");
+        if (id > 0) {
+            int h = getResources().getDimensionPixelSize(id);
+            if (h > 0) {
+                webView.setPadding(0, h, 0, 0);
+            }
+        }
+        final View decorView = getWindow().getDecorView();
+        ViewCompat.setOnApplyWindowInsetsListener(decorView, (v, windowInsets) -> {
+            Insets topBars = windowInsets.getInsets(
                     WindowInsetsCompat.Type.statusBars()
                             | WindowInsetsCompat.Type.displayCutout());
-            v.setPadding(0, bars.top, 0, 0);
+            Insets nav = windowInsets.getInsets(WindowInsetsCompat.Type.navigationBars());
+            webView.setPadding(0, topBars.top, 0, nav.bottom);
             return windowInsets;
         });
-        ViewCompat.requestApplyInsets(webView);
+        webView.post(() -> ViewCompat.requestApplyInsets(decorView));
+    }
+
+    /**
+     * 状态栏背景透明，图标颜色跟随系统深浅色模式：
+     * 浅色模式用深色图标（否则白图标压在浅色页面上看不清），深色模式用浅色图标。
+     */
+    private void applyStatusBarAppearance() {
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        int mask = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+        boolean darkMode = mask == Configuration.UI_MODE_NIGHT_YES;
+        WindowInsetsControllerCompat c =
+                new WindowInsetsControllerCompat(getWindow(), getWindow().getDecorView());
+        c.setAppearanceLightStatusBars(!darkMode);
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
     }
 
     @Override
