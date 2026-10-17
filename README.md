@@ -43,7 +43,7 @@ npx cap sync android
 
 ## 本地构建
 
-环境：Node 20+、JDK 17、Android SDK（装 Android Studio 即可）。
+环境：Node 20+、**JDK 21**（Capacitor 7 要求，用 17 会报 `invalid source release: 21`）、Android SDK（装 Android Studio 即可）。
 
 ```bash
 npm ci
