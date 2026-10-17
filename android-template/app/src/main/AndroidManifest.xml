@@ -43,10 +43,6 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission
-        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
+    <!-- 运单拍照/选图走系统 Intent（Capacitor 已接管 WebView 的文件选择），
+         不需要声明存储或相机权限，避免上架时的权限合规审查 -->
 </manifest>
