@@ -111,13 +111,9 @@ def main():
             '    <solid android:color="@color/ic_launcher_background"/>\n'
             "</shape>\n"
         )
-    with open(os.path.join(drawable, "splash.xml"), "w", encoding="utf-8") as f:
-        f.write(
-            '<?xml version="1.0" encoding="utf-8"?>\n'
-            '<layer-list xmlns:android="http://schemas.android.com/apk/res/android">\n'
-            '    <item android:drawable="@color/splashBackground"/>\n'
-            "</layer-list>\n"
-        )
+    # 注意：不要生成 drawable/splash.xml。
+    # Capacitor 模板自带 drawable/splash.png，同名不同扩展名会被 aapt2 判为重复资源而构建失败。
+    # 启动图直接用各密度的 drawable-*/splash.png，styles.xml 里的 @drawable/splash 会自动按密度命中。
     print(f"完成：{RES}")
 
 
