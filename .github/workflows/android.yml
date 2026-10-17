@@ -2,7 +2,6 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main]
     tags:
       - 'v*'
   workflow_dispatch:
@@ -24,8 +23,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -116,19 +113,11 @@ jobs:
 
       - name: 构建 Debug APK
         if: ${{ github.event.inputs.build_type != 'release' }}
-        run: |
-          set -o pipefail
-          mkdir -p ci-logs
-          cd android
-          ./gradlew assembleDebug --no-daemon 2>&1 | tee ../ci-logs/gradle-debug.log
+        run: cd android && ./gradlew assembleDebug --no-daemon
 
       - name: 构建 Release APK
         if: ${{ github.event.inputs.build_type != 'debug' }}
-        run: |
-          set -o pipefail
-          mkdir -p ci-logs
-          cd android
-          ./gradlew assembleRelease --no-daemon ${{ env.SIGN_ARGS }} 2>&1 | tee ../ci-logs/gradle-release.log
+        run: cd android && ./gradlew assembleRelease --no-daemon ${{ env.SIGN_ARGS }}
 
       - name: 整理产物
         shell: bash
@@ -150,16 +139,3 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.apk
-
-      - name: 导出构建日志
-        if: always()
-        run: |
-          mkdir -p ci-logs
-          { echo "run=${{ github.run_number }}"; echo "sha=${{ github.sha }}"; echo "java=$(java -version 2>&1 | head -1)"; echo "ANDROID_HOME=$ANDROID_HOME"; ls -la android/app/src/main/res/values/ android/app/src/main/res/drawable/ 2>/dev/null; } > ci-logs/env.txt 2>&1 || true
-          git config user.name "ci-bot"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -q -B ci-logs || git checkout -q ci-logs
-          git add -f ci-logs
-          git commit -q -m "ci: 构建日志 run ${{ github.run_number }}" || echo "无新增日志"
-          git push -q -f origin ci-logs || echo "推送日志分支失败"
-          echo "日志已推送到 ci-logs 分支"
