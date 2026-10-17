@@ -107,6 +107,11 @@ jobs:
           echo "SIGN_ARGS=-Pandroid.injected.signing.store.file=app/zhipei.jks -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD -Pandroid.injected.signing.key.alias=$KEY_ALIAS -Pandroid.injected.signing.key.password=$KEY_PASSWORD" >> "$GITHUB_ENV"
           echo "签名密钥已就绪"
 
+      # 在 Windows 上提交的 gradlew 会丢掉可执行位（core.fileMode 默认 false），
+      # 到 Linux runner 上就是 Permission denied，这里显式补回来。
+      - name: 修复 gradlew 权限
+        run: chmod +x android/gradlew
+
       - name: 构建 Debug APK
         if: ${{ github.event.inputs.build_type != 'release' }}
         run: |
