@@ -150,12 +150,16 @@ jobs:
 
   
 
+  
+
   # ── 下载页自动同步 ──────────────────────────────────────────────
   # 打 tag 出 Release 后，把 release APK 自动镜像到 zhipei-one 的 downloads/，
   # 并更新 manifest.json 与 version.json（version.json = tag 号）。
   # 这是「git tag 为唯一版本真值源」的关键：发版后关于页版本号与下载的 APK
   # 永远一致，不再有人工改 version.json、不再版本漂移。
-  # 提交会触发 Cloudflare Pages 重新部署。内容无变化时跳过，避免空部署。
+  # 此外会在 zhipei-one 仓库建一个同 tag 的发行版，使 GitHub 首页 Latest 显示
+  # 真实当前版本（而非陈旧历史 tag）。
+  # 提交会触发 Cloudflare Pages 重新部署。内容无变化时跳过文件提交，避免空部署。
   # 依赖 repo secret：ZHIPEI_ONE_PAT（对 zhipei-one 有 contents:write 的 PAT）。
   sync-download:
     needs: build
@@ -175,7 +179,7 @@ jobs:
           fi
           export TZ=Asia/Shanghai
           python3 - <<'PY'
-          import os, json, base64, hashlib, urllib.request, datetime
+          import os, json, base64, hashlib, urllib.request, urllib.error, datetime
           PAT = os.environ["SYNC_PAT"]
           TAG = os.environ["GITHUB_REF_NAME"]
           VER = TAG[1:]
@@ -193,6 +197,27 @@ jobs:
               with urllib.request.urlopen(req, timeout=180) as r:
                   b = r.read()
                   return b if raw else (json.loads(b) if b.strip() else {})
+
+          def ensure_release(tag, ver):
+              # 先查后建，幂等：该 tag 的 release 已存在就跳过
+              rel_url = "https://api.github.com/repos/%s/releases/tags/%s" % (DST, tag)
+              try:
+                  api(rel_url)
+                  print("release %s 已存在，跳过创建" % tag)
+                  return
+              except urllib.error.HTTPError as e:
+                  if e.code != 404:
+                      raise
+              if DRY:
+                  print("DRY-RUN：不创建 zhipei-one release %s" % tag)
+                  return
+              body = ("自动发布：与 tianbops/zhipei 的 %s 发行版同步。\n\n"
+                      "Web 版本号（version.json）与下载 APK 均为 %s，二者一致。"
+                      % (tag, ver))
+              api("https://api.github.com/repos/%s/releases" % DST, "POST",
+                  {"tag_name": tag, "name": "智配One " + tag, "body": body,
+                   "target_commitish": "main", "draft": False, "prerelease": False})
+              print("已创建 zhipei-one release %s" % tag)
 
           rel = api("https://api.github.com/repos/%s/releases/tags/%s" % (SRC, TAG))
           asset = next((a for a in rel.get("assets", [])
@@ -238,20 +263,22 @@ jobs:
               if not same:
                   changed.append(path)
           if not changed:
-              print("内容与线上一致，跳过提交")
-              raise SystemExit(0)
-          print("待更新:", changed)
-          if DRY:
-              print("DRY-RUN：不提交")
-              raise SystemExit(0)
-          tree = [{"path": p, "mode": "100644", "type": "blob", "sha": s} for p, s in files]
-          t = api("https://api.github.com/repos/%s/git/trees" % DST, "POST",
-                  {"base_tree": head, "tree": tree})
-          c = api("https://api.github.com/repos/%s/git/commits" % DST, "POST",
-                  {"message": "chore(release): 同步 %s 到下载页 + version.json\n\n来自 %s release %s（size=%d, md5=%s）"
+              print("文件内容无变化，跳过提交")
+          else:
+              print("待更新:", changed)
+              if DRY:
+                  print("DRY-RUN：不提交")
+              else:
+                  tree = [{"path": p, "mode": "100644", "type": "blob", "sha": s} for p, s in files]
+                  t = api("https://api.github.com/repos/%s/git/trees" % DST, "POST",
+                          {"base_tree": head, "tree": tree})
+                  c = api("https://api.github.com/repos/%s/git/commits" % DST, "POST",
+                          {"message": "chore(release): 同步 %s 到下载页 + version.json + 发行版\n\n来自 %s release %s（size=%d, md5=%s）"
                               % (TAG, SRC, TAG, len(apk), md5[:8]),
-                   "tree": t["sha"], "parents": [head]})
-          api("https://api.github.com/repos/%s/git/refs/heads/main" % DST, "PATCH",
-              {"sha": c["sha"], "force": False})
-          print("已同步 -> %s (%s)" % (DST, c["sha"][:10]))
+                           "tree": t["sha"], "parents": [head]})
+                  api("https://api.github.com/repos/%s/git/refs/heads/main" % DST, "PATCH",
+                      {"sha": c["sha"], "force": False})
+                  print("已同步 -> %s (%s)" % (DST, c["sha"][:10]))
+          # 无论文件是否变化，都确保 zhipei-one 有对应 tag 的发行版（使仓库首页 Latest 正确）
+          ensure_release(TAG, VER)
           PY
