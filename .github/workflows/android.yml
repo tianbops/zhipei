@@ -147,3 +147,102 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.apk
+
+  # ── 下载页自动同步 ──────────────────────────────────────────────
+  # 打 tag 出 Release 后，把 release APK 自动镜像到 zhipei-one 的 downloads/，
+  # 并更新 manifest.json；该提交会触发 Cloudflare Pages 重新部署，
+  # 实现「zhipei 出新版 → 下载页自动更新」，无需手动同步。
+  # 依赖 repo secret：ZHIPEI_ONE_PAT（对 zhipei-one 有 contents:write 的 PAT）。
+  sync-download:
+    needs: build
+    if: ${{ github.ref_type == 'tag' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 镜像 APK + manifest 到 zhipei-one
+        env:
+          SYNC_PAT: ${{ secrets.ZHIPEI_ONE_PAT }}
+        shell: bash
+        run: |
+          if [ -z "$SYNC_PAT" ]; then
+            echo "::warning::未配置 ZHIPEI_ONE_PAT secret，跳过下载页同步"
+            exit 0
+          fi
+          export TZ=Asia/Shanghai
+          python3 - <<'PY'
+          import os, json, base64, hashlib, urllib.request, datetime
+          PAT = os.environ["SYNC_PAT"]
+          TAG = os.environ["GITHUB_REF_NAME"]
+          VER = TAG[1:]
+          SRC, DST = "tianbops/zhipei", "tianbops/zhipei-one"
+          DRY = os.environ.get("SYNC_DRY") == "1"
+
+          def api(url, method="GET", payload=None, raw=False):
+              data = json.dumps(payload).encode() if payload is not None else None
+              # raw=True 时是下载 release 资产二进制，必须用 octet-stream，
+              # 否则 GitHub 返回资产元数据 JSON（约 1-2KB）而不是 APK 本体
+              headers = {"Authorization": "Bearer " + PAT,
+                         "Content-Type": "application/json",
+                         "Accept": "application/octet-stream" if raw else "application/vnd.github+json"}
+              req = urllib.request.Request(url, data=data, method=method, headers=headers)
+              with urllib.request.urlopen(req, timeout=180) as r:
+                  b = r.read()
+                  return b if raw else (json.loads(b) if b.strip() else {})
+
+          rel = api("https://api.github.com/repos/%s/releases/tags/%s" % (SRC, TAG))
+          asset = next((a for a in rel.get("assets", [])
+                        if a["name"] == "zhipei-one-%s-release.apk" % VER), None)
+          if not asset:
+              print("::warning::%s 下没有 zhipei-one-%s-release.apk，跳过同步" % (TAG, VER))
+              raise SystemExit(0)
+          apk = api("https://api.github.com/repos/%s/releases/assets/%s" % (SRC, asset["id"]), raw=True)
+          md5 = hashlib.md5(apk).hexdigest()
+          print("APK bytes=%d md5=%s" % (len(apk), md5))
+
+          def new_blob(content, b64=False):
+              body = {"content": base64.b64encode(content).decode() if b64 else content.decode("utf-8"),
+                      "encoding": "base64" if b64 else "utf-8"}
+              return api("https://api.github.com/repos/%s/git/blobs" % DST, "POST", body)["sha"]
+
+          apk_sha = new_blob(apk, b64=True)
+          today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).strftime("%Y-%m-%d")
+          manifest = (json.dumps({
+              "version": VER,
+              "file": "zhipei-one-latest-release.apk",
+              "size": len(apk),
+              "updated": today,
+              "note": "发新版时：替换同目录 latest APK + 更新 version/updated，页面无需改动",
+          }, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+          mf_sha = new_blob(manifest)
+
+          head = api("https://api.github.com/repos/%s/git/ref/heads/main" % DST)["object"]["sha"]
+          files = [("downloads/zhipei-one-latest-release.apk", apk_sha),
+                   ("downloads/manifest.json", mf_sha)]
+          changed = []
+          for path, sha in files:
+              try:
+                  cur = api("https://api.github.com/repos/%s/contents/%s?ref=main" % (DST, path))
+                  same = (cur.get("sha") == sha)
+              except Exception:
+                  same = False
+              if not same:
+                  changed.append(path)
+          if not changed:
+              print("内容与线上一致，跳过提交")
+              raise SystemExit(0)
+          print("待更新:", changed)
+          if DRY:
+              print("DRY-RUN：不提交")
+              raise SystemExit(0)
+          tree = [{"path": p, "mode": "100644", "type": "blob", "sha": s} for p, s in files]
+          t = api("https://api.github.com/repos/%s/git/trees" % DST, "POST",
+                  {"base_tree": head, "tree": tree})
+          c = api("https://api.github.com/repos/%s/git/commits" % DST, "POST",
+                  {"message": "chore(download): 同步 %s APK 到下载页\n\n来自 %s release %s（size=%d, md5=%s）"
+                              % (TAG, SRC, TAG, len(apk), md5[:8]),
+                   "tree": t["sha"], "parents": [head]})
+          api("https://api.github.com/repos/%s/git/refs/heads/main" % DST, "PATCH",
+              {"sha": c["sha"], "force": False})
+          print("已同步 -> %s (%s)" % (DST, c["sha"][:10]))
+          PY
