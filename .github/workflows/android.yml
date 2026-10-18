@@ -153,6 +153,8 @@ jobs:
 
   
 
+  
+
   # ── 下载页自动同步 ──────────────────────────────────────────────
   # 打 tag 出 Release 后，把 release APK 自动镜像到 zhipei-one 的 downloads/，
   # 并更新 manifest.json 与 version.json（version.json = tag 号）。
@@ -216,7 +218,7 @@ jobs:
                       "Web 版本号（version.json）与下载 APK 均为 %s，二者一致。"
                       % (tag, ver))
               api("https://api.github.com/repos/%s/releases" % DST, "POST",
-                  {"tag_name": tag, "name": "智配One " + tag, "body": body,
+                  {"tag_name": tag, "name": "智配One V" + VER, "body": body,
                    "target_commitish": "main", "draft": False, "prerelease": False})
               print("已创建 zhipei-one release %s" % tag)
 
