@@ -43,18 +43,4 @@ jobs:
           arch: x86_64
           profile: pixel_6
           script: |
-            set -eu
-            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-            adb shell monkey -p com.tianbops.zhipei 1
-            for attempt in $(seq 1 30); do
-              if adb shell pidof com.tianbops.zhipei >/dev/null 2>&1; then
-                break
-              fi
-              sleep 2
-            done
-            adb shell pidof com.tianbops.zhipei >/dev/null
-            sleep 10
-            if adb logcat -d -t 5000 | grep -E "FATAL EXCEPTION|Process: com.tianbops.zhipei, PID:"; then
-              echo "::error::Android app crashed during emulator startup"
-              exit 1
-            fi
+            set -eu; adb install -r android/app/build/outputs/apk/debug/app-debug.apk; adb shell monkey -p com.tianbops.zhipei 1; for attempt in $(seq 1 30); do if adb shell pidof com.tianbops.zhipei >/dev/null 2>&1; then break; fi; sleep 2; done; adb shell pidof com.tianbops.zhipei >/dev/null; sleep 10; if adb logcat -d -t 5000 | grep -E "FATAL EXCEPTION|Process: com.tianbops.zhipei, PID:"; then echo "::error::Android app crashed during emulator startup"; exit 1; fi
