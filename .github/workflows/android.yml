@@ -227,7 +227,7 @@ jobs:
           fi
           export TZ=Asia/Shanghai
           python3 - <<'PY'
-          import os, json, base64, hashlib, urllib.request, urllib.error, datetime
+          import os, json, base64, hashlib, urllib.request, urllib.error, urllib.parse, datetime
           PAT = os.environ["SYNC_PAT"]
           TAG = os.environ["GITHUB_REF_NAME"]
           VER = TAG[1:]
@@ -247,25 +247,54 @@ jobs:
                   return b if raw else (json.loads(b) if b.strip() else {})
 
           def ensure_release(tag, ver):
-              # 先查后建，幂等：该 tag 的 release 已存在就跳过
+              # 先查后建，幂等；即使 Release 已存在，也继续核对并补齐 APK 附件
               rel_url = "https://api.github.com/repos/%s/releases/tags/%s" % (DST, tag)
               try:
-                  api(rel_url)
-                  print("release %s 已存在，跳过创建" % tag)
-                  return
+                  return api(rel_url)
               except urllib.error.HTTPError as e:
                   if e.code != 404:
                       raise
               if DRY:
                   print("DRY-RUN：不创建 zhipei-one release %s" % tag)
-                  return
-              body = ("自动发布：与 tianbops/zhipei 的 %s 发行版同步。\n\n"
+                  return None
+              body = ("自动发布：与 tianbops/zhipei 的 %s 发行版同步。\\n\\n"
                       "Web 版本号（version.json）与下载 APK 均为 %s，二者一致。"
                       % (tag, ver))
-              api("https://api.github.com/repos/%s/releases" % DST, "POST",
-                  {"tag_name": tag, "name": "智配One V" + VER, "body": body,
-                   "target_commitish": "main", "draft": False, "prerelease": False})
+              release = api("https://api.github.com/repos/%s/releases" % DST, "POST",
+                            {"tag_name": tag, "name": "智配One V" + VER, "body": body,
+                             "target_commitish": "main", "draft": False, "prerelease": False})
               print("已创建 zhipei-one release %s" % tag)
+              return release
+
+          def sync_release_asset(tag, ver, apk):
+              release = ensure_release(tag, ver)
+              if release is None:
+                  print("DRY-RUN：跳过 Release APK 附件上传")
+                  return
+              asset_name = "zhipei-one-%s-release.apk" % ver
+              existing = next((a for a in release.get("assets", []) if a["name"] == asset_name), None)
+              if existing and existing.get("size") == len(apk):
+                  print("Release 附件已存在且大小一致，跳过上传：%s" % asset_name)
+                  return
+              if DRY:
+                  print("DRY-RUN：将上传 Release 附件 %s（%d bytes）" % (asset_name, len(apk)))
+                  return
+              if existing:
+                  api("https://api.github.com/repos/%s/releases/assets/%s" % (DST, existing["id"]), "DELETE")
+                  print("已删除大小不一致的旧附件：%s" % asset_name)
+              upload_url = release["upload_url"].split("{", 1)[0]
+              req = urllib.request.Request(
+                  upload_url + "?name=" + urllib.parse.quote(asset_name),
+                  data=apk,
+                  method="POST",
+                  headers={"Authorization": "Bearer " + PAT,
+                           "Content-Type": "application/vnd.android.package-archive",
+                           "Accept": "application/vnd.github+json"})
+              with urllib.request.urlopen(req, timeout=180) as response:
+                  uploaded = json.loads(response.read())
+              if uploaded.get("name") != asset_name or uploaded.get("size") != len(apk):
+                  raise RuntimeError("Release 附件上传后校验失败")
+              print("已上传 Release APK 附件：%s（%d bytes）" % (asset_name, len(apk)))
 
           rel = api("https://api.github.com/repos/%s/releases/tags/%s" % (SRC, TAG))
           asset = next((a for a in rel.get("assets", [])
@@ -327,6 +356,6 @@ jobs:
                   api("https://api.github.com/repos/%s/git/refs/heads/main" % DST, "PATCH",
                       {"sha": c["sha"], "force": False})
                   print("已同步 -> %s (%s)" % (DST, c["sha"][:10]))
-          # 无论文件是否变化，都确保 zhipei-one 有对应 tag 的发行版（使仓库首页 Latest 正确）
-          ensure_release(TAG, VER)
+          # 无论 Release 是否已存在，都确保有对应版本的 APK 附件
+          sync_release_asset(TAG, VER, apk)
           PY
