@@ -94,6 +94,29 @@ jobs:
 
       # 注意：secrets 上下文不能出现在 if 条件里（会导致整个 workflow 编译失败、一个 job 都起不来），
       # 只能通过 env 传进来，在脚本内部判断是否配置。
+      - name: Require signing credentials for release
+        if: ${{ github.event.inputs.build_type != 'debug' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -n "$KEYSTORE_BASE64" ] || missing+=("KEYSTORE_BASE64")
+          [ -n "$KEYSTORE_PASSWORD" ] || missing+=("KEYSTORE_PASSWORD")
+          [ -n "$KEY_ALIAS" ] || missing+=("KEY_ALIAS")
+          [ -n "$KEY_PASSWORD" ] || missing+=("KEY_PASSWORD")
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf '::error::正式 Release 缺少签名 Secrets：%s\n' "${missing[*]}"
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode >/tmp/zhipei-release-check.jks
+          keytool -list -keystore /tmp/zhipei-release-check.jks -storepass "$KEYSTORE_PASSWORD" >/dev/null
+          rm -f /tmp/zhipei-release-check.jks
+
       - name: 准备签名
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -140,7 +163,7 @@ jobs:
         with:
           name: zhipei-one-apk-${{ steps.ver.outputs.name }}
           path: dist/*.apk
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: 挂到 Release
         if: ${{ github.ref_type == 'tag' }}
