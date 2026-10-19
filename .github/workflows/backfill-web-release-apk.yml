@@ -33,38 +33,63 @@ jobs:
           fi
           export APK_PATH="$RUNNER_TEMP/zhipei-one-$VERSION-release.apk"
           python3 - <<'PY'
-          import json, os, re, sys, urllib.request, urllib.error, urllib.parse
+          import json, os, sys, urllib.request, urllib.error, urllib.parse
 
           version = os.environ["VERSION"]
           token = os.environ["WEB_RELEASE_TOKEN"]
           apk_path = os.environ["APK_PATH"]
           source_tag = "v" + version
           asset_name = "zhipei-one-" + version + "-release.apk"
-          source_url = "https://github.com/tianbops/zhipei/releases/download/" + source_tag + "/" + asset_name
+          source_release_api = "https://api.github.com/repos/tianbops/zhipei/releases/tags/" + source_tag
           target_api = "https://api.github.com/repos/tianbops/zhipei-one/releases/tags/" + source_tag
+          auth = {"Authorization": "Bearer " + token}
 
           def request(url, method="GET", data=None, headers=None):
-              h = {"User-Agent": "zhipei-release-backfill", "Accept": "application/vnd.github+json"}
+              h = {"User-Agent": "zhipei-release-backfill",
+                   "Accept": "application/vnd.github+json",
+                   "X-GitHub-Api-Version": "2022-11-28"}
               if headers:
                   h.update(headers)
               req = urllib.request.Request(url, data=data, headers=h, method=method)
-              with urllib.request.urlopen(req, timeout=60) as resp:
+              with urllib.request.urlopen(req, timeout=90) as resp:
                   return resp.read(), resp.headers.get("Content-Type", "")
 
-          print("Downloading source APK:", asset_name)
+          print("Looking up Android Release asset through authenticated GitHub API:", source_tag)
           try:
-              data, _ = request(source_url, headers={"Accept": "application/vnd.android.package-archive"})
+              body, _ = request(source_release_api, headers=auth)
+              source_release = json.loads(body)
           except urllib.error.HTTPError as e:
-              print("::error::Source Android Release APK download failed: HTTP", e.code)
+              print("::error::Could not read Android Release. Check that ZHIPEI_ONE_PAT can read tianbops/zhipei; HTTP", e.code)
+              sys.exit(1)
+
+          source_asset = next((a for a in source_release.get("assets", [])
+                               if a.get("name") == asset_name and a.get("state") == "uploaded"), None)
+          if not source_asset:
+              print("::error::Expected APK asset not found in Android Release:", asset_name)
+              sys.exit(1)
+
+          print("Downloading APK asset ID:", source_asset["id"])
+          try:
+              data, _ = request(source_asset["url"],
+                                headers={**auth, "Accept": "application/octet-stream"})
+          except urllib.error.HTTPError as e:
+              print("::error::Authenticated Android APK download failed: HTTP", e.code)
               sys.exit(1)
           if not data:
               print("::error::Downloaded APK is empty")
               sys.exit(1)
+          # Guard against accidentally saving an API error document instead of an APK.
+          if not data.startswith(b"PK"):
+              print("::error::Downloaded content does not look like an APK/ZIP archive")
+              sys.exit(1)
           with open(apk_path, "wb") as f:
               f.write(data)
           print("Downloaded APK size:", len(data))
+          if len(data) != source_asset.get("size"):
+              print("::error::Downloaded APK size does not match the source Release asset metadata")
+              sys.exit(1)
 
-          auth = {"Authorization": "Bearer " + token}
+          print("Looking up existing Web Release:", source_tag)
           try:
               body, _ = request(target_api, headers=auth)
               release = json.loads(body)
@@ -91,7 +116,7 @@ jobs:
           upload_url = "https://uploads.github.com/repos/tianbops/zhipei-one/releases/" + str(release_id) + "/assets?name=" + urllib.parse.quote(asset_name)
           try:
               result, _ = request(upload_url, method="POST", data=data,
-                                  headers={**auth, "Content-Type": "application/vnd.android.package-archive",
+                                  headers={**auth, "Content-Type": "application/octet-stream",
                                            "Accept": "application/vnd.github+json"})
               uploaded = json.loads(result)
           except urllib.error.HTTPError as e:
