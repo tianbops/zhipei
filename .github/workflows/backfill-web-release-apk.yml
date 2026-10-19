@@ -1,0 +1,106 @@
+name: Backfill Web Release APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Existing version to repair, for example 1.0.9"
+        required: true
+        default: "1.0.9"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  attach-existing-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download and attach APK to existing Web Release
+        env:
+          VERSION: ${{ inputs.version }}
+          WEB_RELEASE_TOKEN: ${{ secrets.ZHIPEI_ONE_PAT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid version format"
+            exit 1
+          fi
+          if [ -z "$WEB_RELEASE_TOKEN" ]; then
+            echo "::error::Missing repository secret ZHIPEI_ONE_PAT"
+            exit 1
+          fi
+          export APK_PATH="$RUNNER_TEMP/zhipei-one-$VERSION-release.apk"
+          python3 - <<'PY'
+          import json, os, re, sys, urllib.request, urllib.error, urllib.parse
+
+          version = os.environ["VERSION"]
+          token = os.environ["WEB_RELEASE_TOKEN"]
+          apk_path = os.environ["APK_PATH"]
+          source_tag = "v" + version
+          asset_name = "zhipei-one-" + version + "-release.apk"
+          source_url = "https://github.com/tianbops/zhipei/releases/download/" + source_tag + "/" + asset_name
+          target_api = "https://api.github.com/repos/tianbops/zhipei-one/releases/tags/" + source_tag
+
+          def request(url, method="GET", data=None, headers=None):
+              h = {"User-Agent": "zhipei-release-backfill", "Accept": "application/vnd.github+json"}
+              if headers:
+                  h.update(headers)
+              req = urllib.request.Request(url, data=data, headers=h, method=method)
+              with urllib.request.urlopen(req, timeout=60) as resp:
+                  return resp.read(), resp.headers.get("Content-Type", "")
+
+          print("Downloading source APK:", asset_name)
+          try:
+              data, _ = request(source_url, headers={"Accept": "application/vnd.android.package-archive"})
+          except urllib.error.HTTPError as e:
+              print("::error::Source Android Release APK download failed: HTTP", e.code)
+              sys.exit(1)
+          if not data:
+              print("::error::Downloaded APK is empty")
+              sys.exit(1)
+          with open(apk_path, "wb") as f:
+              f.write(data)
+          print("Downloaded APK size:", len(data))
+
+          auth = {"Authorization": "Bearer " + token}
+          try:
+              body, _ = request(target_api, headers=auth)
+              release = json.loads(body)
+          except urllib.error.HTTPError as e:
+              print("::error::Target Web Release must already exist; lookup returned HTTP", e.code)
+              sys.exit(1)
+
+          release_id = release["id"]
+          assets = release.get("assets", [])
+          existing = next((a for a in assets if a.get("name") == asset_name), None)
+          if existing and existing.get("size") == len(data):
+              print("Matching asset already exists with the same size; no change needed.")
+              sys.exit(0)
+
+          if existing:
+              delete_url = "https://api.github.com/repos/tianbops/zhipei-one/releases/assets/" + str(existing["id"])
+              try:
+                  request(delete_url, method="DELETE", headers=auth)
+                  print("Removed stale same-named asset before replacement.")
+              except urllib.error.HTTPError as e:
+                  print("::error::Could not remove stale asset: HTTP", e.code)
+                  sys.exit(1)
+
+          upload_url = "https://uploads.github.com/repos/tianbops/zhipei-one/releases/" + str(release_id) + "/assets?name=" + urllib.parse.quote(asset_name)
+          try:
+              result, _ = request(upload_url, method="POST", data=data,
+                                  headers={**auth, "Content-Type": "application/vnd.android.package-archive",
+                                           "Accept": "application/vnd.github+json"})
+              uploaded = json.loads(result)
+          except urllib.error.HTTPError as e:
+              print("::error::APK upload failed: HTTP", e.code)
+              sys.exit(1)
+
+          if uploaded.get("name") != asset_name or uploaded.get("size") != len(data):
+              print("::error::Uploaded asset verification failed")
+              sys.exit(1)
+          print("Attached and verified:", uploaded["name"], "size:", uploaded["size"])
+          print("Web Release:", release.get("html_url", ""))
+          PY
