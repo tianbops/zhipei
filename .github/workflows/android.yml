@@ -33,14 +33,20 @@ jobs:
 
       - name: 计算版本
         id: ver
+        env:
+          REQUESTED_VERSION_NAME: ${{ github.event.inputs.version_name }}
         shell: bash
         run: |
-          if [ -n "${{ github.event.inputs.version_name }}" ]; then
-            NAME="${{ github.event.inputs.version_name }}"
-          elif [ "${{ github.ref_type }}" = "tag" ]; then
+          if [ -n "$REQUESTED_VERSION_NAME" ]; then
+            NAME="$REQUESTED_VERSION_NAME"
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
             NAME="${GITHUB_REF_NAME#v}"
           else
             NAME="1.0.0"
+          fi
+          if [[ ! "$NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::版本号格式无效，仅允许 SemVer 数字、点、加号和连字符"
+            exit 1
           fi
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
@@ -71,13 +77,18 @@ jobs:
 
       - name: 指定线上地址
         if: ${{ github.event.inputs.web_url != '' }}
+        env:
+          WEB_URL: ${{ github.event.inputs.web_url }}
         shell: bash
         run: |
           node -e "
             const fs=require('fs');const p='capacitor.config.json';
             const c=JSON.parse(fs.readFileSync(p,'utf8'));
-            c.server={...(c.server||{}),url:'${{ github.event.inputs.web_url }}',androidScheme:'https'};
-            fs.writeFileSync(p,JSON.stringify(c,null,2)+'\n');
+            const url=process.env.WEB_URL;
+            const parsed=new URL(url);
+            if (parsed.protocol !== 'https:' || !parsed.hostname) throw new Error('web_url 必须是有效的 HTTPS 地址');
+            c.server={...(c.server||{}),url,androidScheme:'https'};
+            fs.writeFileSync(p,JSON.stringify(c,null,2)+'\\n');
           "
 
       - name: 同步 Capacitor
@@ -114,8 +125,9 @@ jobs:
             exit 1
           fi
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode >/tmp/zhipei-release-check.jks
-          keytool -list -keystore /tmp/zhipei-release-check.jks -storepass "$KEYSTORE_PASSWORD" >/dev/null
-          rm -f /tmp/zhipei-release-check.jks
+          trap 'rm -f /tmp/zhipei-release-check.jks' EXIT
+          keytool -list -keystore /tmp/zhipei-release-check.jks -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+          echo "Keystore 与指定 alias 可读取；key password 将由正式 Gradle Release 构建验证"
 
       - name: 准备签名
         env:
@@ -126,7 +138,7 @@ jobs:
         shell: bash
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "未配置签名密钥，release 将产出未签名包"
+            echo "Debug 构建无需签名密钥"
             exit 0
           fi
           echo "$KEYSTORE_BASE64" | base64 -d > android/app/zhipei.jks
@@ -134,8 +146,7 @@ jobs:
           # 模块目录 android/app 解析的，写 app/zhipei.jks 会去找 android/app/app/zhipei.jks
           KS="$GITHUB_WORKSPACE/android/app/zhipei.jks"
           ls -l "$KS"
-          echo "SIGN_ARGS=-Pandroid.injected.signing.store.file=$KS -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD -Pandroid.injected.signing.key.alias=$KEY_ALIAS -Pandroid.injected.signing.key.password=$KEY_PASSWORD" >> "$GITHUB_ENV"
-          echo "签名密钥已就绪"
+          echo "签名 keystore 已准备就绪"
 
       # 在 Windows 上提交的 gradlew 会丢掉可执行位（core.fileMode 默认 false），
       # 到 Linux runner 上就是 Permission denied，这里显式补回来。
@@ -148,7 +159,18 @@ jobs:
 
       - name: 构建 Release APK
         if: ${{ github.event.inputs.build_type != 'debug' }}
-        run: cd android && ./gradlew assembleRelease --no-daemon ${{ env.SIGN_ARGS }}
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        shell: bash
+        run: |
+          cd android
+          ./gradlew assembleRelease --no-daemon \
+            -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/android/app/zhipei.jks" \
+            -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
 
       - name: 整理产物
         shell: bash

@@ -75,9 +75,10 @@ git tag v1.0.0 && git push origin v1.0.0
 ```
 
 Actions 会打出 debug + release 两个包并挂到 Release。
-想让 release 包自动签名，在仓库 Settings → Secrets 配：
-`KEYSTORE_BASE64`（`base64 -i zhipei.jks`）、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`。
-没配也能跑，只是 release 包未签名。
+正式 Release 必须配置签名 Secrets，否则工作流会在构建前失败，不会生成未签名 Release 包。
+在仓库 Settings → Secrets 配置：
+`KEYSTORE_BASE64`（keystore 文件的 Base64 内容）、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`。
+工作流会先检查 Secrets 是否齐全、keystore 密码是否正确以及 alias 是否存在；正式 Gradle Release 构建会进一步验证密钥密码。不要把 keystore 或密码提交到仓库。
 
 ## 可调项
 
