@@ -44,6 +44,10 @@ jobs:
           else
             NAME="1.0.0"
           fi
+          if [[ ! "$NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::版本号格式无效，仅允许 SemVer 数字、点、加号和连字符"
+            exit 1
+          fi
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
@@ -81,7 +85,8 @@ jobs:
             const fs=require('fs');const p='capacitor.config.json';
             const c=JSON.parse(fs.readFileSync(p,'utf8'));
             const url=process.env.WEB_URL;
-            if (!/^https:\\/\\//i.test(url)) throw new Error('web_url 必须使用 HTTPS');
+            const parsed=new URL(url);
+            if (parsed.protocol !== 'https:' || !parsed.hostname) throw new Error('web_url 必须是有效的 HTTPS 地址');
             c.server={...(c.server||{}),url,androidScheme:'https'};
             fs.writeFileSync(p,JSON.stringify(c,null,2)+'\\n');
           "
@@ -133,7 +138,7 @@ jobs:
         shell: bash
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "未配置签名密钥，release 将产出未签名包"
+            echo "Debug 构建无需签名密钥"
             exit 0
           fi
           echo "$KEYSTORE_BASE64" | base64 -d > android/app/zhipei.jks
