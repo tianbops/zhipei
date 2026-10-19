@@ -33,11 +33,13 @@ jobs:
 
       - name: 计算版本
         id: ver
+        env:
+          REQUESTED_VERSION_NAME: ${{ github.event.inputs.version_name }}
         shell: bash
         run: |
-          if [ -n "${{ github.event.inputs.version_name }}" ]; then
-            NAME="${{ github.event.inputs.version_name }}"
-          elif [ "${{ github.ref_type }}" = "tag" ]; then
+          if [ -n "$REQUESTED_VERSION_NAME" ]; then
+            NAME="$REQUESTED_VERSION_NAME"
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
             NAME="${GITHUB_REF_NAME#v}"
           else
             NAME="1.0.0"
@@ -71,13 +73,17 @@ jobs:
 
       - name: 指定线上地址
         if: ${{ github.event.inputs.web_url != '' }}
+        env:
+          WEB_URL: ${{ github.event.inputs.web_url }}
         shell: bash
         run: |
           node -e "
             const fs=require('fs');const p='capacitor.config.json';
             const c=JSON.parse(fs.readFileSync(p,'utf8'));
-            c.server={...(c.server||{}),url:'${{ github.event.inputs.web_url }}',androidScheme:'https'};
-            fs.writeFileSync(p,JSON.stringify(c,null,2)+'\n');
+            const url=process.env.WEB_URL;
+            if (!/^https:\\/\\//i.test(url)) throw new Error('web_url 必须使用 HTTPS');
+            c.server={...(c.server||{}),url,androidScheme:'https'};
+            fs.writeFileSync(p,JSON.stringify(c,null,2)+'\\n');
           "
 
       - name: 同步 Capacitor
