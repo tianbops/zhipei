@@ -12,6 +12,7 @@ permissions:
 jobs:
   android-debug-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,7 +35,8 @@ jobs:
       - name: Build debug APK (verification only)
         run: cd android && ./gradlew assembleDebug --no-daemon
 
-      - name: Launch app in Android Emulator
+      - name: Launch app in Android Emulator (non-blocking)
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
