@@ -114,8 +114,9 @@ jobs:
             exit 1
           fi
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode >/tmp/zhipei-release-check.jks
-          keytool -list -keystore /tmp/zhipei-release-check.jks -storepass "$KEYSTORE_PASSWORD" >/dev/null
-          rm -f /tmp/zhipei-release-check.jks
+          trap 'rm -f /tmp/zhipei-release-check.jks' EXIT
+          keytool -list -keystore /tmp/zhipei-release-check.jks -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+          echo "Keystore 与指定 alias 可读取；key password 将由正式 Gradle Release 构建验证"
 
       - name: 准备签名
         env:
