@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  生产环境全部走 https：Cloudflare Pages（zhipeione.ccwu.cc）、Upstash Redis、
+  生产环境全部走 https：Cloudflare Pages（tianyou-zhipei.pages.dev）、Upstash Redis、
   PaddleOCR 均为 https。已收紧明文流量：
     - AndroidManifest 设 usesCleartextTraffic=false（默认拒绝明文）；
     - 此处不再放行任何明文 domain（原 localhost/127.0.0.1/10.0.0.0/8 cleartext 已移除）。
