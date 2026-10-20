@@ -4,6 +4,7 @@ import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
+import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
@@ -23,7 +24,7 @@ import com.getcapacitor.BridgeActivity;
  *      window.zpSystemBack()。「再按一次退出」与分层关闭语义全部由 Web 决定，
  *      原生不再自带第二套返回逻辑，保证顶部返回键/物理返回键/手势返回三者行为一致。
  *   2. 仅当收到 Web 的退出指令（ZhipeiNative.exitApp()）才真正 finish() 结束 Activity。
- *   3. 系统栏 inset 转成 WebView 上下内边距，内容不压状态栏/手势条
+ *   3. 系统栏 inset 转成 WebView 上下外边距，内容不压状态栏/手势条
  *   4. 状态栏/导航栏底色与图标明暗跟随「网页外观主题」（深色/浅色）
  * 业务代码一行没动，全部走 WebView 里的 web 端。
  */
@@ -67,7 +68,7 @@ public class MainActivity extends BridgeActivity {
     /**
      * targetSdk 35 起 Android 强制 edge-to-edge，App 内容会顶到状态栏/刘海/手势条下面。
      * 监听挂在 DecorView 上（根视图，必定收到 inset 派发），把系统栏高度换算成
-     * WebView 的上下内边距，让所有页面内容都落在安全区内。
+     * WebView 的上下外边距，让所有页面内容都落在安全区内。
      * 另外先用系统 status_bar_height 资源兜底，避免 insets 派发前首帧顶到状态栏。
      */
     private void applySystemBarInsets(WebView webView) {
@@ -75,10 +76,10 @@ public class MainActivity extends BridgeActivity {
         if (id > 0) {
             int h = getResources().getDimensionPixelSize(id);
             if (h > 0) {
-                webView.setPadding(0, h, 0, 0);
+                applyInsetsMargins(webView, h, 0);
             }
         }
-        // 内容延伸到系统栏之下（由下面的 padding 让开），否则 inset 不会派发。
+        // 内容延伸到系统栏之下（由下面的边距让开），否则 inset 不会派发。
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         final View decorView = getWindow().getDecorView();
         ViewCompat.setOnApplyWindowInsetsListener(decorView, (v, windowInsets) -> {
@@ -86,10 +87,28 @@ public class MainActivity extends BridgeActivity {
                     WindowInsetsCompat.Type.statusBars()
                             | WindowInsetsCompat.Type.displayCutout());
             Insets nav = windowInsets.getInsets(WindowInsetsCompat.Type.navigationBars());
-            webView.setPadding(0, topBars.top, 0, nav.bottom);
+            applyInsetsMargins(webView, topBars.top, nav.bottom);
             return windowInsets;
         });
         webView.post(() -> ViewCompat.requestApplyInsets(decorView));
+    }
+
+    /**
+     * 用外边距让出系统栏区域。注意不能用 WebView 自身的 padding——
+     * android.webkit.WebView 的已知行为是内容渲染忽略自身 padding，
+     * 设了也无效（这正是此前「顶部遮挡」长期未修好的根因）。
+     * 边距区露出的是窗口背景，由 applyChrome 统一设为主题色。
+     */
+    private void applyInsetsMargins(WebView webView, int top, int bottom) {
+        ViewGroup.LayoutParams lp = webView.getLayoutParams();
+        if (lp instanceof ViewGroup.MarginLayoutParams) {
+            ViewGroup.MarginLayoutParams mlp = (ViewGroup.MarginLayoutParams) lp;
+            if (mlp.topMargin != top || mlp.bottomMargin != bottom) {
+                mlp.topMargin = top;
+                mlp.bottomMargin = bottom;
+                webView.setLayoutParams(mlp);
+            }
+        }
     }
 
     /**
@@ -113,10 +132,12 @@ public class MainActivity extends BridgeActivity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             getWindow().setNavigationBarContrastEnforced(false);
         }
-        // WebView 背景同色：状态栏/手势条对应的 padding 区不再露白。
+        // WebView 背景同色：状态栏/手势条对应的边距区不再露白。
         if (webViewRef != null) {
             webViewRef.setBackgroundColor(color);
         }
+        // WebView 上下外边距让出的区域露出的是窗口（DecorView）背景，同样设为主题色。
+        getWindow().getDecorView().setBackgroundColor(color);
         WindowInsetsControllerCompat c =
                 new WindowInsetsControllerCompat(getWindow(), getWindow().getDecorView());
         // appearanceLight* = true 表示「底色浅、图标画深色」，深色底要传 false（白图标）。
