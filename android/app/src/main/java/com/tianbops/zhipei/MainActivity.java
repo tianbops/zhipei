@@ -6,7 +6,6 @@ import android.os.Bundle;
 import android.view.View;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
-import android.widget.Toast;
 
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -19,18 +18,19 @@ import com.getcapacitor.BridgeActivity;
 /**
  * 智配One 主界面。
  * 在 Capacitor 默认 BridgeActivity 之上只加了几件事：
- *   1. 返回键优先让 WebView 后退（网页内路由可用），退不动才退出 App
- *   2. 2 秒内连按两次返回键才真正退出，避免误触
+ *   1. 返回键统一转交 Web 层中央控制器（ui-unified.js 的 zpSystemBack/zpHandleBack）：
+ *      有历史可退则 goBack 触发 popstate 让其分层关闭/离开；无历史可退则直接调用
+ *      window.zpSystemBack()。「再按一次退出」与分层关闭语义全部由 Web 决定，
+ *      原生不再自带第二套返回逻辑，保证顶部返回键/物理返回键/手势返回三者行为一致。
+ *   2. 仅当收到 Web 的退出指令（ZhipeiNative.exitApp()）才真正 finish() 结束 Activity。
  *   3. 系统栏 inset 转成 WebView 上下内边距，内容不压状态栏/手势条
  *   4. 状态栏/导航栏底色与图标明暗跟随「网页外观主题」（深色/浅色）
  * 业务代码一行没动，全部走 WebView 里的 web 端。
  */
 public class MainActivity extends BridgeActivity {
 
-    private static final long BACK_EXIT_INTERVAL = 2000L;
     /** 首帧兜底色：与 web 深色主题背景 --zp-bg 一致，避免白条闪一下 */
     private static final int DEFAULT_BG = Color.parseColor("#05070A");
-    private long lastBackPressedAt = 0L;
 
     private WebView webViewRef;
     private int chromeColor = DEFAULT_BG;
@@ -140,24 +140,40 @@ public class MainActivity extends BridgeActivity {
             // JS 接口跑在 JavaBridge 线程，UI 操作必须切回主线程。
             runOnUiThread(() -> applyChrome(color, darkBg));
         }
+
+        /**
+         * 供网页调用：window.ZhipeiNative.exitApp()。
+         * Web 层返回控制器（zpHandleBack）在工作区根第二次返回、或登录页第二次返回时
+         * 确认退出，回调此方法真正结束 Activity。壳内 window.close() 是空操作、
+         * history.back() 也退不出 WebView，唯一可靠的退出就是这里 finish()。
+         */
+        @JavascriptInterface
+        public void exitApp() {
+            runOnUiThread(() -> {
+                try {
+                    finish();
+                } catch (Exception ignore) {
+                }
+            });
+        }
     }
 
     @Override
     public void onBackPressed() {
         WebView webView = getBridge() != null ? getBridge().getWebView() : null;
-        boolean handledByWeb = webView != null && webView.canGoBack();
-
-        if (handledByWeb) {
+        if (webView == null) {
+            super.onBackPressed();
+            return;
+        }
+        // 有历史可退（工作区页进入时 ui-unified.js 压了占位历史）：goBack 触发 popstate，
+        // 由 Web 中央控制器决定「关闭最上层弹层 / 离开当前页 / 进入再按一次退出」。
+        if (webView.canGoBack()) {
             webView.goBack();
             return;
         }
-
-        long now = System.currentTimeMillis();
-        if (now - lastBackPressedAt > BACK_EXIT_INTERVAL) {
-            lastBackPressedAt = now;
-            Toast.makeText(this, "再按一次退出智配One", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        super.onBackPressed();
+        // 无历史可退（登录/引导页，或工作区根已消耗占位后的第二次返回）：
+        // 直接转交 Web 控制器。确认退出时由 Web 回调 ZhipeiNative.exitApp()，
+        // 原生不再自带「再按一次退出」——否则会与 Web 的提示叠加成双 Toast、三次才退出。
+        webView.evaluateJavascript("window.zpSystemBack && window.zpSystemBack()", null);
     }
 }
