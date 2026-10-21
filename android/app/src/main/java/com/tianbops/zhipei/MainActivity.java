@@ -21,6 +21,7 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.BridgeActivity;
+import com.tianbops.zhipei.BuildConfig;
 
 /**
  * 智配One 主界面。
@@ -193,6 +194,27 @@ public class MainActivity extends BridgeActivity {
             int color = parseColor(colorHex, DEFAULT_BG);
             // JS 接口跑在 JavaBridge 线程，UI 操作必须切回主线程。
             runOnUiThread(() -> applyChrome(color, darkBg));
+        }
+
+        /**
+         * 供网页调用：window.ZhipeiNative.appVersion() 返回 APK 版本名。
+         * App 壳 server.url 指向线上网页，页面内容实时更新，但原生能力
+         * （下载/返回/状态栏）锁在 APK 里——所以「关于」页的当前版本必须
+         * 显示壳版本而非网页版本，用户才能判断自己要不要更新。
+         * versionName 由 CI 按 tag 注入（android.yml sed 覆盖）。
+         */
+        @JavascriptInterface
+        public String appVersion() {
+            return BuildConfig.VERSION_NAME;
+        }
+
+        /**
+         * 供网页调用：window.ZhipeiNative.appVersionCode() 返回 APK 版本号。
+         * 与 appVersion() 配套，供网页做精确版本比较（versionName 相同时的兜底）。
+         */
+        @JavascriptInterface
+        public int appVersionCode() {
+            return BuildConfig.VERSION_CODE;
         }
 
         /**
