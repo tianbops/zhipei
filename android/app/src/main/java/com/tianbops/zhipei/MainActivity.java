@@ -71,31 +71,42 @@ public class MainActivity extends BridgeActivity {
         // Capacitor 默认不处理下载：点击带 download 的链接只会触发 onDownloadStart，
         // 没人监听就毫无反应（用户反馈「安卓端点击下载最新版本没反应」即此）。
         // 走系统 DownloadManager 下到公共 Downloads 目录，通知栏完成后点击即装。
-        webView.setDownloadListener((url, userAgent, contentDisposition, mimetype, contentLength) -> {
-            String fileName = URLUtil.guessFileName(url, contentDisposition, mimetype);
-            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-            if (userAgent != null) {
-                request.addRequestHeader("User-Agent", userAgent);
-            }
-            request.setTitle(fileName);
-            request.setDescription("智配One 安装包");
-            request.setMimeType(mimetype != null ? mimetype : "application/vnd.android.package-archive");
-            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-            try {
-                // 公共目录对 DownloadManager 始终可用（系统进程代写，不受分区存储限制）
-                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
-            } catch (Exception e) {
-                request.setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, fileName);
-            }
-            DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
-            if (dm != null) {
-                dm.enqueue(request);
-                Toast.makeText(this, "开始下载「智配One」安装包，下载完成后点击通知栏即可安装",
-                        Toast.LENGTH_LONG).show();
-            }
-        });
+        webView.setDownloadListener((url, userAgent, contentDisposition, mimetype, contentLength) ->
+                startDownload(url, userAgent, contentDisposition, mimetype));
         applySystemBarInsets(webView);
         applyChrome(DEFAULT_BG, true);
+    }
+
+    /**
+     * 统一的 APK 下载入口：DownloadListener 与 JS 接口 downloadApk() 共用。
+     * 下到公共 Downloads 目录，通知栏完成后点击即装；公共目录不可用时
+     * 退回应用私有目录。
+     */
+    private void startDownload(String url, String userAgent, String contentDisposition, String mimetype) {
+        if (url == null || url.isEmpty()) {
+            return;
+        }
+        String fileName = URLUtil.guessFileName(url, contentDisposition, mimetype);
+        DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+        if (userAgent != null) {
+            request.addRequestHeader("User-Agent", userAgent);
+        }
+        request.setTitle(fileName);
+        request.setDescription("智配One 安装包");
+        request.setMimeType(mimetype != null ? mimetype : "application/vnd.android.package-archive");
+        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+        try {
+            // 公共目录对 DownloadManager 始终可用（系统进程代写，不受分区存储限制）
+            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
+        } catch (Exception e) {
+            request.setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, fileName);
+        }
+        DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+        if (dm != null) {
+            dm.enqueue(request);
+            Toast.makeText(this, "开始下载「智配One」安装包，下载完成后点击通知栏即可安装",
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     /**
@@ -225,6 +236,23 @@ public class MainActivity extends BridgeActivity {
             } catch (Exception e) {
                 return 0;
             }
+        }
+
+        /**
+         * 供网页调用：window.ZhipeiNative.downloadApk(url) 直接下 APK。
+         * 为什么不用 WebView 的 download 事件链路：壳内点「下载应用」是网页
+         *  JS 程序化 click()  `<a download>` 链接，onDownloadStart 对程序化
+         * 点击的派发并不 100% 可靠；且 v1.0.10 及更早的壳根本没注册监听。
+         * 由网页显式调原生接口、原生直接 enqueue DownloadManager，是唯一
+         * 全版本可靠的路径。userAgent 等由系统按 URL 自行推断。
+         */
+        @JavascriptInterface
+        public void downloadApk(String url) {
+            if (url == null || url.isEmpty()) {
+                return;
+            }
+            // JS 接口跑在 JavaBridge 线程，DownloadManager 操作切回主线程。
+            runOnUiThread(() -> startDownload(url, null, null, null));
         }
 
         /**
