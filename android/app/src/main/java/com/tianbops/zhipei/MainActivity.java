@@ -21,7 +21,6 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.BridgeActivity;
-import com.tianbops.zhipei.BuildConfig;
 
 /**
  * 智配One 主界面。
@@ -197,15 +196,22 @@ public class MainActivity extends BridgeActivity {
         }
 
         /**
-         * 供网页调用：window.ZhipeiNative.appVersion() 返回 APK 版本名。
+         * 供网页调用：window.ZhipeiNative.appVersion() 返回 APK 版本名（如 1.0.12）。
          * App 壳 server.url 指向线上网页，页面内容实时更新，但原生能力
          * （下载/返回/状态栏）锁在 APK 里——所以「关于」页的当前版本必须
          * 显示壳版本而非网页版本，用户才能判断自己要不要更新。
-         * versionName 由 CI 按 tag 注入（android.yml sed 覆盖）。
+         * 取 PackageInfo.versionName 而非 BuildConfig：AGP 8 起生成类的
+         * 字段/可用性随版本有变动（v1.0.12 首次尝试 BuildConfig 编译即失败），
+         * 而 versionName 永远与安装包实际版本一致，CI 按 tag 覆盖 gradle
+         * 版本后这里自然跟随，且无生成类依赖。
          */
         @JavascriptInterface
         public String appVersion() {
-            return BuildConfig.VERSION_NAME;
+            try {
+                return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            } catch (Exception e) {
+                return "";
+            }
         }
 
         /**
@@ -214,7 +220,11 @@ public class MainActivity extends BridgeActivity {
          */
         @JavascriptInterface
         public int appVersionCode() {
-            return BuildConfig.VERSION_CODE;
+            try {
+                return (int) getPackageManager().getPackageInfo(getPackageName(), 0).getLongVersionCode();
+            } catch (Exception e) {
+                return 0;
+            }
         }
 
         /**
