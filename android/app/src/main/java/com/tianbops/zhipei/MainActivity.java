@@ -1,12 +1,18 @@
 package com.tianbops.zhipei;
 
+import android.app.DownloadManager;
+import android.content.Context;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
+import android.webkit.URLUtil;
 import android.webkit.WebView;
+import android.widget.Toast;
 
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -61,6 +67,33 @@ public class MainActivity extends BridgeActivity {
         // 网页外观主题变化时由 web 端回调 applyTheme()，这里先按深色兜底，
         // 保证首帧状态栏就是「深色底 + 浅色图标」，不会闪白条。
         webView.addJavascriptInterface(new NativeChrome(), "ZhipeiNative");
+        // WebView 内点「下载应用 / 最新安装包」时的 APK 下载接管。
+        // Capacitor 默认不处理下载：点击带 download 的链接只会触发 onDownloadStart，
+        // 没人监听就毫无反应（用户反馈「安卓端点击下载最新版本没反应」即此）。
+        // 走系统 DownloadManager 下到公共 Downloads 目录，通知栏完成后点击即装。
+        webView.setDownloadListener((url, userAgent, contentDisposition, mimetype, contentLength) -> {
+            String fileName = URLUtil.guessFileName(url, contentDisposition, mimetype);
+            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+            if (userAgent != null) {
+                request.addRequestHeader("User-Agent", userAgent);
+            }
+            request.setTitle(fileName);
+            request.setDescription("智配One 安装包");
+            request.setMimeType(mimetype != null ? mimetype : "application/vnd.android.package-archive");
+            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            try {
+                // 公共目录对 DownloadManager 始终可用（系统进程代写，不受分区存储限制）
+                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
+            } catch (Exception e) {
+                request.setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, fileName);
+            }
+            DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+            if (dm != null) {
+                dm.enqueue(request);
+                Toast.makeText(this, "开始下载「智配One」安装包，下载完成后点击通知栏即可安装",
+                        Toast.LENGTH_LONG).show();
+            }
+        });
         applySystemBarInsets(webView);
         applyChrome(DEFAULT_BG, true);
     }
