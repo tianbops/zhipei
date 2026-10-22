@@ -20,9 +20,7 @@
       "showSpinner": false
     },
     "StatusBar": {
-      "overlaysWebView": false,
-      "style": "LIGHTCONTENT",
-      "backgroundColor": "#05070A"
+      "overlaysWebView": true
     },
     "Keyboard": {
       "resize": "body"

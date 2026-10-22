@@ -42,6 +42,10 @@ public class MainActivity extends BridgeActivity {
     private WebView webViewRef;
     private int chromeColor = DEFAULT_BG;
     private boolean darkChrome = true;
+    /** Bridge/WebView 在部分 Capacitor 版本的 onCreate 阶段尚未创建，
+     *  此时直接 return 会让状态栏/边距修复全部失效（线上仍遮挡）。
+     *  改为有限次延后重试，确保修复一定会执行。 */
+    private int webViewRetry = 0;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -52,6 +56,9 @@ public class MainActivity extends BridgeActivity {
     private void configureWebView() {
         WebView webView = getBridge() != null ? getBridge().getWebView() : null;
         if (webView == null) {
+            if (webViewRetry++ < 30) {
+                getWindow().getDecorView().postDelayed(this::configureWebView, 100);
+            }
             return;
         }
         webViewRef = webView;
