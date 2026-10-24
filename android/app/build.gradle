@@ -9,8 +9,8 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // 版本口径已统一：git tag（vX.Y.Z）为唯一真值，由 scripts/sync-version.sh 自动同步此处。
         // code 采用 (major*100+minor)*100+patch 编码（1.0.13 → 10013），保证单调递增且与语义版本一一对应。
-        versionCode 10013
-        versionName "1.0.13"
+        versionCode 10014
+        versionName "1.0.14"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
