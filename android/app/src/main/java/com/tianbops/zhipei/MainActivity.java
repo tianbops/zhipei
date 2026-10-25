@@ -7,6 +7,9 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.AbsoluteSizeSpan;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
@@ -43,6 +46,9 @@ public class MainActivity extends BridgeActivity {
     private WebView webViewRef;
     private int chromeColor = DEFAULT_BG;
     private boolean darkChrome = true;
+    /** 网页「全局文字大小」缩放（0.85–1.3，默认 1）。网页内文字由页面自身缩放，
+     *  壳只用它放大原生 Toast 等浮层文字；JS Bridge 线程写、UI 线程读，加 volatile。 */
+    private volatile float fontScale = 1f;
     /** Bridge/WebView 在部分 Capacitor 版本的 onCreate 阶段尚未创建，
      *  此时直接 return 会让状态栏/边距修复全部失效（线上仍遮挡）。
      *  改为有限次延后重试，确保修复一定会执行。 */
@@ -112,9 +118,30 @@ public class MainActivity extends BridgeActivity {
         DownloadManager dm = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
         if (dm != null) {
             dm.enqueue(request);
-            Toast.makeText(this, "开始下载「智配One」安装包，下载完成后点击通知栏即可安装",
-                    Toast.LENGTH_LONG).show();
+            showToast("开始下载「智配One」安装包，下载完成后点击通知栏即可安装");
         }
+    }
+
+    /**
+     * Toast 文字跟随网页「全局文字大小」缩放。
+     * 原生 Toast 的文字尺寸由系统主题决定，不认 App 内字号滑杆——用户把滑杆
+     * 拉到最大时，页面文字都大了，唯独下载提示还是小字，观感割裂。
+     * 用 SpannableString + AbsoluteSizeSpan 按 fontScale 缩放（基准 14sp，
+     * 与系统默认 Toast 文字尺寸一致；scale=1 时走原路径，不增加开销）。
+     */
+    private void showToast(String text) {
+        Toast toast;
+        if (Math.abs(fontScale - 1f) > 0.001f) {
+            float density = getResources().getDisplayMetrics().scaledDensity;
+            int sizePx = Math.round(14f * fontScale * density);
+            SpannableString styled = new SpannableString(text);
+            styled.setSpan(new AbsoluteSizeSpan(sizePx), 0, text.length(),
+                    Spanned.SPAN_INCLUSIVE_EXCLUSIVE);
+            toast = Toast.makeText(this, styled, Toast.LENGTH_LONG);
+        } else {
+            toast = Toast.makeText(this, text, Toast.LENGTH_LONG);
+        }
+        toast.show();
     }
 
     /**
@@ -222,6 +249,19 @@ public class MainActivity extends BridgeActivity {
             int color = parseColor(colorHex, DEFAULT_BG);
             // JS 接口跑在 JavaBridge 线程，UI 操作必须切回主线程。
             runOnUiThread(() -> applyChrome(color, darkBg));
+        }
+
+        /**
+         * 供网页调用：window.ZhipeiNative.setFontScale(1.3)。
+         * 网页「外观-全局文字大小」滑杆的值（0.85–1.3）。网页内文字由页面自身
+         * 缩放（appearance.js 的 scanText），壳只把它用于原生 Toast 文字；
+         * WebView 的 setTextZoom 仍锁 100%，避免两层缩放叠乘挤压布局。
+         * 原生 select 下拉/日期对话框已由页内自建弹层（zp-picker）替代，
+         * 那些浮层跟随网页主题与字号，无需壳再操心。
+         */
+        @JavascriptInterface
+        public void setFontScale(float scale) {
+            fontScale = Math.max(0.85f, Math.min(1.3f, scale));
         }
 
         /**
