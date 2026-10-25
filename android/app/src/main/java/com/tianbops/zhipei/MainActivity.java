@@ -14,6 +14,7 @@ import android.webkit.URLUtil;
 import android.webkit.WebView;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -177,6 +178,16 @@ public class MainActivity extends BridgeActivity {
     private void applyChrome(int color, boolean darkBg) {
         chromeColor = color;
         darkChrome = darkBg;
+        // App 日夜间模式与网页主题同步：WebView 的原生弹层（select 下拉、
+        // 日期选择对话框）在不少内核版本不读网页的 CSS color-scheme，
+        // 只认宿主 Activity 的 uiMode——系统浅色 + 网页深色时，弹层会一直
+        // 是白底黑字（线上「深色模式弹层不跟随」的根因）。
+        // 主题是 Theme.AppCompat.DayNight 且 manifest 的 configChanges 含
+        // uiMode：此处切换只触发 onConfigurationChanged，不会重建
+        // Activity、不会重载网页。
+        AppCompatDelegate.setDefaultNightMode(darkBg
+                ? AppCompatDelegate.MODE_NIGHT_YES
+                : AppCompatDelegate.MODE_NIGHT_NO);
         getWindow().setStatusBarColor(color);
         getWindow().setNavigationBarColor(color);
         // Android 15 会强制给手势条加对比蒙层，关掉才能用上我们自己的底色。
