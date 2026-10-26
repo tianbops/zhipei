@@ -32,6 +32,10 @@ jobs:
       - name: 安装依赖
         run: npm ci
 
+      # 桥接契约护栏：原生方法改名/改签名时立即失败，而不是让网页端静默降级
+      - name: 校验桥接契约
+        run: npm run check:bridge
+
       - name: 同步 Capacitor 平台
         run: npx cap sync android
 

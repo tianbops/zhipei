@@ -4,6 +4,7 @@
   "private": true,
   "description": "智配One 安卓 App（Capacitor 壳，加载线上 web，与 web 端共用同一套页面与数据）",
   "scripts": {
+    "check:bridge": "node scripts/check-bridge-contract.mjs",
     "android:icons": "python scripts/gen-icons.py",
     "android:sync": "npx cap sync android",
     "android:open": "npx cap open android",

@@ -1,6 +1,8 @@
 package com.tianbops.zhipei;
 
 import android.app.DownloadManager;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.graphics.Color;
 import android.net.Uri;
@@ -293,6 +295,45 @@ public class MainActivity extends BridgeActivity {
                 return (int) getPackageManager().getPackageInfo(getPackageName(), 0).getLongVersionCode();
             } catch (Exception e) {
                 return 0;
+            }
+        }
+
+        /**
+         * 供网页调用：window.ZhipeiNative.getClipboardText() 读取系统剪贴板纯文本。
+         * 为什么需要它：WebView 里 navigator.clipboard.readText() 在国产 WebView 与
+         * 系统内置浏览器上普遍不可用或被拒，网页的「一键粘贴」只能退化成"请长按粘贴"。
+         * 壳直接读系统剪贴板，网页据此实现真·一键粘贴。
+         * <p>
+         * 返回约定（三态，网页据此决定「直接粘入」还是「继续降级」）：
+         *   非空字符串 = 剪贴板纯文本，网页直接粘入；
+         *   ""         = 剪贴板里没有文字（空剪贴板，或复制的是图片/文件等非文本条目）；
+         *   null       = 读取本身失败（系统异常 / 无剪贴板服务），网页应继续走自己的降级链路。
+         * <p>
+         * 读取约束：Android 10+ 只有「前台 + 有输入焦点」的应用才能读剪贴板；本接口
+         * 由用户在 App 内点击「一键粘贴」时触发，满足该条件。同步返回，与 appVersion() 一致；
+         * 剪贴板读取只是一次轻量的系统服务调用。
+         */
+        @JavascriptInterface
+        public String getClipboardText() {
+            try {
+                ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (cm == null) {
+                    return null; // 读取失败：交回网页降级
+                }
+                ClipData clip = cm.getPrimaryClip();
+                if (clip == null) {
+                    return ""; // 无剪贴板内容
+                }
+                // 逐条找第一个带文本的条目：剪贴板可能是图片/文件/Intent，getText() 为 null
+                for (int i = 0; i < clip.getItemCount(); i++) {
+                    CharSequence text = clip.getItemAt(i).getText();
+                    if (text != null && text.length() > 0) {
+                        return text.toString();
+                    }
+                }
+                return "";
+            } catch (Exception e) {
+                return null; // 读取失败：交回网页降级
             }
         }
 
