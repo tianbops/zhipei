@@ -30,6 +30,10 @@ jobs:
         run: npm ci
       - name: Check native bridge contract
         run: npm run check:bridge
+      - name: Check native template drift
+        # android-template/ 是 README 定义的原生真值源，漂移会让"用模板覆盖 android/"
+        # 静默丢掉已注册的 @JavascriptInterface 桥接能力（2026-10-28 发现时已丢 6 个）
+        run: npm run check:template-drift
       - name: Sync Capacitor
         run: npx cap sync android
       - name: Ensure Gradle wrapper is executable
