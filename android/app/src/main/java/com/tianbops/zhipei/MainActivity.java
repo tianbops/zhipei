@@ -42,8 +42,11 @@ import com.getcapacitor.BridgeActivity;
  */
 public class MainActivity extends BridgeActivity {
 
-    /** 首帧兜底色：与 web 深色主题背景 --zp-bg 一致，避免白条闪一下 */
-    private static final int DEFAULT_BG = Color.parseColor("#05070A");
+    /** 首帧兜底色：与 web 深色主题背景 --zp-bg（#121826）逐值一致。
+     *  历史值 #05070A 是更早的「近黑导航条」配色，网页把底栏/板块统一成 #121826
+     *  之后，首帧状态栏会在页面上沿留下一条明显更黑的横带（用户反馈「顶部安卓
+     *  状态栏黑色」），故与网页主题色对齐。 */
+    private static final int DEFAULT_BG = Color.parseColor("#121826");
 
     private WebView webViewRef;
     private int chromeColor = DEFAULT_BG;
