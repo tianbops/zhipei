@@ -194,7 +194,7 @@ jobs:
 
       - name: 挂到 Release
         if: ${{ github.ref_type == 'tag' }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: 智配One V${{ steps.ver.outputs.name }}
           files: dist/*.apk
