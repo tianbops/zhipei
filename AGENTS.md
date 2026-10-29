@@ -62,6 +62,26 @@ git push origin main
 发版只能由 tag 触发（`v*`）或手动 `workflow_dispatch`，见 `.github/workflows/android.yml`。
 **不要**在普通提交里改版本号——版本号由 `scripts/sync-version.sh` 与 tag 对齐。
 
+### 4.1 Gradle / AGP / JDK 主版本升级：必须跑两条路径
+
+`android-ci.yml` 只构建 **debug**，而真正发版走的是 `android.yml` 的 **release**（签名 + R8）。
+两者不是同一套任务图，debug 绿**不能**证明 release 绿。主版本升级（Gradle、AGP、JDK）按下面流程走：
+
+1. 在升级分支上等 `android-debug-build` 绿；
+2. **额外**手动触发 release 构建验证（不产生 Release、不影响线上）：
+
+   ```bash
+   gh workflow run android.yml --ref <升级分支> -f build_type=release -f version_name=1.0.99
+   ```
+
+   判据：`构建 Release APK`、`整理产物`、`上传 APK` 三个步骤 success（`挂到 Release` 在非 tag 时会跳过）。
+3. 两条都绿才合并。
+
+背景（2026-10-30，Gradle 8.11.1 → 9.8.2）：CI 只覆盖 debug，release 侧的签名参数
+（`-Pandroid.injected.signing.*`）与 minify 行为是独立的失败面；当时正是靠第 2 步才敢合并。
+另外 `_redis`/Gradle 缓存与 `gradle-wrapper.jar`、`gradlew` 会被 dependabot 一并改写，
+合并后注意 `android/gradlew` 的可执行位（工作流里有 `chmod +x` 兜底）。
+
 ## 5. 7 个原生桥方法（删改即破坏网页端功能）
 
 | 方法 | 签名 | 网页端用途 |
