@@ -1,5 +1,13 @@
 name: Android build verification
 
+# 本工作流是**唯一**的常规构建护栏（push/PR → main）。
+# 2026-10-30 合并了此前的 android-build-check.yml：两者触发条件完全相同
+# （push + pull_request → main），步骤是严格的包含关系，每次提交都跑两遍
+# debug 构建等于双倍 CI 分钟数。合并后保留全部更严格的步骤：
+#   依赖审计 / 桥接契约 / 模板漂移 / Debug 构建（均为阻塞项）
+#   + 模拟器启动冒烟（continue-on-error，非阻塞）
+# 正式发版仍由 android.yml（仅 tag v* / 手动）负责，职责不变。
+# 注意：main 分支保护要求本 job 的检查名 `android-debug-build`，改名须同步改保护规则。
 on:
   push:
     branches: [main]
