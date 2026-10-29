@@ -65,7 +65,7 @@ jobs:
       # Capacitor 7 的 capacitor-android 模块要求 Java 21，用 17 会报
       # "error: invalid source release: 21"
       - name: 配置 JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
