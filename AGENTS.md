@@ -79,7 +79,7 @@ git push origin main
 
 背景（2026-10-30，Gradle 8.11.1 → 9.8.2）：CI 只覆盖 debug，release 侧的签名参数
 （`-Pandroid.injected.signing.*`）与 minify 行为是独立的失败面；当时正是靠第 2 步才敢合并。
-另外 `_redis`/Gradle 缓存与 `gradle-wrapper.jar`、`gradlew` 会被 dependabot 一并改写，
+另外 Gradle 缓存与 `gradle-wrapper.jar`、`gradlew` 会被 dependabot 一并改写，
 合并后注意 `android/gradlew` 的可执行位（工作流里有 `chmod +x` 兜底）。
 
 ## 5. 7 个原生桥方法（删改即破坏网页端功能）
