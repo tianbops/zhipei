@@ -1,0 +1,30 @@
+# CODEOWNERS — 智配One 客户端（Android 壳）
+#
+# 高风险路径 = 影响所有用户启动、签名、原生能力的文件。
+# 取消人审后，这里是"改动必须被额外看一眼"的标记，审查来源可替换
+# （Copilot review / 其他 AI review / 仅 CI）。
+
+*                                       @tianbops
+
+# ── 极高风险：原生桥与宿主 Activity ────────────────────────────
+/android-template/app/src/main/java/    @tianbops
+/android/app/src/main/java/             @tianbops
+/android-template/app/src/main/AndroidManifest.xml @tianbops
+/android/app/src/main/AndroidManifest.xml          @tianbops
+
+# ── 极高风险：签名与构建 ──────────────────────────────────────
+/android/app/build.gradle               @tianbops
+/android/build.gradle                   @tianbops
+/android/gradle.properties              @tianbops
+/android/variables.gradle               @tianbops
+
+# ── 高风险：发版与分发链路 ────────────────────────────────────
+/.github/workflows/android.yml          @tianbops
+/.github/workflows/backfill-web-release-apk.yml @tianbops
+/scripts/sync-version.sh                @tianbops
+/capacitor.config.json                  @tianbops
+
+# ── 高风险：契约守卫（改守卫可能放宽约束）──────────────────────
+/scripts/check-bridge-contract.mjs      @tianbops
+/scripts/check-template-drift.mjs       @tianbops
+/.gitignore                             @tianbops

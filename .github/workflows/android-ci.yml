@@ -28,6 +28,12 @@ jobs:
           java-version: '21'
       - name: Install dependencies
         run: npm ci
+      # ── 依赖审计门禁（审计报告 P0-2）────────────────────────────
+      # 本仓跟踪 package-lock.json，可直接审计；--audit-level=high 只阻断
+      # High/Critical，Low/Moderate 只记录。Gradle 侧依赖不在 npm 覆盖范围内，
+      # 由 dependabot 的 gradle ecosystem 做版本跟踪（见 .github/dependabot.yml）。
+      - name: Dependency security audit
+        run: npm audit --audit-level=high
       - name: Check native bridge contract
         run: npm run check:bridge
       - name: Check native template drift

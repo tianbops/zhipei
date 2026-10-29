@@ -1,0 +1,44 @@
+version: 2
+updates:
+  # npm：仅 3 个 Capacitor 包
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - dependencies
+    # Capacitor 主版本必须与 android/ 侧的 @capacitor/android 严格配套，
+    # 自动升级会造成 sync 失败或原生 API 不兼容，交人工评估
+    ignore:
+      - dependency-name: "@capacitor/*"
+        update-types: ["version-update:semver-major"]
+
+  # Gradle：android/ 下的构建依赖
+  - package-ecosystem: gradle
+    directory: "/android"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(android-deps)"
+    labels:
+      - dependencies
+      - android
+    ignore:
+      # AGP / Gradle 主版本与 JDK 21、Capacitor 7 强耦合，不自动提
+      - dependency-name: "com.android.tools.build:gradle"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "chore(ci)"
+    labels:
+      - dependencies
+      - ci
