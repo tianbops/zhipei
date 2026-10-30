@@ -82,6 +82,22 @@ git push origin main
 另外 Gradle 缓存与 `gradle-wrapper.jar`、`gradlew` 会被 dependabot 一并改写，
 合并后注意 `android/gradlew` 的可执行位（工作流里有 `chmod +x` 兜底）。
 
+### 4.2 返回键：用 OnBackPressedDispatcher，不要重写 onBackPressed
+
+壳**不再重写** `onBackPressed()`，改为在 `onCreate` 里向
+`getOnBackPressedDispatcher().addCallback(this, ...)` 注册回调（`MainActivity.installBackCallback()`）。
+
+- **为什么**：targetSdk 35 起 Android 13+ 的预测性返回默认走 `OnBackInvokedCallback` 通道，
+  重写 `onBackPressed()` 是被标记的旧路径，部分机型上手势会先闪一下「退到桌面」预览。
+  dispatcher 只接管**最终动作**，预览由系统绘制。
+- **不要**设 `android:enableOnBackInvokedCallback`：跟随 targetSdk 的系统默认值，壳不替业务做平台策略决定。
+- 与 Capacitor 的 `BridgeActivity` 共存：AndroidX 后进先出，本回调在 `super.onCreate` 之后注册，先于壳的默认处理。
+- 回调里只做三件事：`canGoBack()` → `goBack()`；否则 `evaluateJavascript("window.zpSystemBack && window.zpSystemBack()")`；
+  Bridge 未就绪时 `finish()`。**永远不要**在回调里 `setEnabled(false)`——禁用后本 Activity 生命周期内再也收不到返回。
+- Web 侧对应入口是 `window.zpSystemBack()`（`js/ui/back.js`，服务端仓库）。删改任一侧都要同步：
+  名字对不上就是「返回键没反应」这类静默故障（2026-10-30 就发生过一次：拆分 `ui-unified.js` 时该入口丢失）。
+- 真正的「退出 App」永远由 Web 回调 `ZhipeiNative.exitApp()`，原生不自带第二套退出逻辑。
+
 ## 5. 7 个原生桥方法（删改即破坏网页端功能）
 
 | 方法 | 签名 | 网页端用途 |

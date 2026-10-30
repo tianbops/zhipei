@@ -19,6 +19,7 @@ import android.webkit.URLUtil;
 import android.webkit.WebView;
 import android.widget.Toast;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -31,7 +32,7 @@ import com.getcapacitor.BridgeActivity;
 /**
  * 智配One 主界面。
  * 在 Capacitor 默认 BridgeActivity 之上只加了几件事：
- *   1. 返回键统一转交 Web 层中央控制器（ui-unified.js 的 zpSystemBack/zpHandleBack）：
+ *   1. 返回键统一转交 Web 层中央控制器（js/ui/back.js 的 zpSystemBack/zpHandleBack）：
  *      有历史可退则 goBack 触发 popstate 让其分层关闭/离开；无历史可退则直接调用
  *      window.zpSystemBack()。「再按一次退出」与分层关闭语义全部由 Web 决定，
  *      原生不再自带第二套返回逻辑，保证顶部返回键/物理返回键/手势返回三者行为一致。
@@ -49,6 +50,8 @@ public class MainActivity extends BridgeActivity {
     private static final int DEFAULT_BG = Color.parseColor("#121826");
 
     private WebView webViewRef;
+    /** 返回键接管回调（AndroidX OnBackPressedDispatcher）。 */
+    private OnBackPressedCallback backCallback;
     private int chromeColor = DEFAULT_BG;
     private boolean darkChrome = true;
     /** 网页「全局文字大小」缩放（0.85–1.3，默认 1）。网页内文字由页面自身缩放，
@@ -62,7 +65,51 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        installBackCallback();
         configureWebView();
+    }
+
+    /**
+     * 返回键接管改用 AndroidX 的 OnBackPressedDispatcher，不再重写 onBackPressed()。
+     *
+     * 为什么换：targetSdk 35 起 Android 13+ 的预测性返回（Predictive Back）默认走
+     * OnBackInvokedCallback 通道，重写 onBackPressed() 属于被系统标记的旧路径——在部分
+     * 机型上系统手势会先播放「退到桌面」的预览动画，再回到 Activity 收到回调，观感上是
+     * 闪一下桌面。dispatcher 是官方认可的迁移入口：手势预览由系统绘制，我们只接管
+     * 「最终动作」，页面内返回逻辑（关闭弹层/离开页面/再按一次退出）一字未改。
+     *
+     * 这里刻意不设 android:enableOnBackInvokedCallback —— 跟随 targetSdk 的系统默认值，
+     * 与迁移前的行为保持一致，避免壳层替业务做平台策略决定。
+     *
+     * 与 Capacitor 的关系：BridgeActivity 若也向 dispatcher 注册了回调，AndroidX 是
+     * 后进先出，本回调在 super.onCreate 之后注册，因此先于它执行；只有本回调被禁用时
+     * 才会落到壳的默认行为（我们从不主动禁用，退出走 ZhipeiNative.exitApp()）。
+     */
+    private void installBackCallback() {
+        backCallback = new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                WebView webView = getBridge() != null ? getBridge().getWebView() : null;
+                if (webView == null) {
+                    // Bridge 尚未就绪（极少见）：直接结束 Activity，等价于旧实现的
+                    // super.onBackPressed()。这里刻意不 setEnabled(false)——回调一旦禁用，
+                    // 本 Activity 生命周期内就再也收不到返回事件。
+                    finish();
+                    return;
+                }
+                // 有历史可退（工作区页进入时 back.js 压了占位历史）：goBack 触发 popstate，
+                // 由 Web 中央控制器决定「关闭最上层弹层 / 离开当前页 / 进入再按一次退出」。
+                if (webView.canGoBack()) {
+                    webView.goBack();
+                    return;
+                }
+                // 无历史可退（登录/引导页，或工作区根已消耗占位后的第二次返回）：
+                // 直接转交 Web 控制器。确认退出时由 Web 回调 ZhipeiNative.exitApp()，
+                // 原生不再自带「再按一次退出」——否则会与 Web 的提示叠加成双 Toast。
+                webView.evaluateJavascript("window.zpSystemBack && window.zpSystemBack()", null);
+            }
+        };
+        getOnBackPressedDispatcher().addCallback(this, backCallback);
     }
 
     private void configureWebView() {
@@ -372,24 +419,5 @@ public class MainActivity extends BridgeActivity {
                 }
             });
         }
-    }
-
-    @Override
-    public void onBackPressed() {
-        WebView webView = getBridge() != null ? getBridge().getWebView() : null;
-        if (webView == null) {
-            super.onBackPressed();
-            return;
-        }
-        // 有历史可退（工作区页进入时 ui-unified.js 压了占位历史）：goBack 触发 popstate，
-        // 由 Web 中央控制器决定「关闭最上层弹层 / 离开当前页 / 进入再按一次退出」。
-        if (webView.canGoBack()) {
-            webView.goBack();
-            return;
-        }
-        // 无历史可退（登录/引导页，或工作区根已消耗占位后的第二次返回）：
-        // 直接转交 Web 控制器。确认退出时由 Web 回调 ZhipeiNative.exitApp()，
-        // 原生不再自带「再按一次退出」——否则会与 Web 的提示叠加成双 Toast、三次才退出。
-        webView.evaluateJavascript("window.zpSystemBack && window.zpSystemBack()", null);
     }
 }
