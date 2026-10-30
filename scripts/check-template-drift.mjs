@@ -34,6 +34,7 @@ const SYNC_FILES = [
   "app/src/main/AndroidManifest.xml",
   "app/src/main/java/com/tianbops/zhipei/MainActivity.java",
   "app/src/main/res/values/colors.xml",
+  "app/src/main/res/values-night/colors.xml",
   "app/src/main/res/values/strings.xml",
   "app/src/main/res/values/styles.xml",
 ];
