@@ -48,6 +48,10 @@ jobs:
         # android-template/ 是 README 定义的原生真值源，漂移会让"用模板覆盖 android/"
         # 静默丢掉已注册的 @JavascriptInterface 桥接能力（2026-10-28 发现时已丢 6 个）
         run: npm run check:template-drift
+      - name: Check back-key channel contract
+        # ADR 0003：返回键必须交 window.zpSystemBack，不得以 webView.goBack() 作第一分支——
+        # goBack 只认「上一页文档」，会把页面内开着的确认框/抽屉连同未处理内容一起丢掉
+        run: npm run check:back
       - name: Sync Capacitor
         run: npx cap sync android
       - name: Ensure Gradle wrapper is executable

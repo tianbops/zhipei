@@ -92,11 +92,19 @@ git push origin main
   dispatcher 只接管**最终动作**，预览由系统绘制。
 - **不要**设 `android:enableOnBackInvokedCallback`：跟随 targetSdk 的系统默认值，壳不替业务做平台策略决定。
 - 与 Capacitor 的 `BridgeActivity` 共存：AndroidX 后进先出，本回调在 `super.onCreate` 之后注册，先于壳的默认处理。
-- 回调里只做三件事：`canGoBack()` → `goBack()`；否则 `evaluateJavascript("window.zpSystemBack && window.zpSystemBack()")`；
-  Bridge 未就绪时 `finish()`。**永远不要**在回调里 `setEnabled(false)`——禁用后本 Activity 生命周期内再也收不到返回。
+- 回调里**只做一件事**：调 `window.zpSystemBack()`；JS 未就绪（首帧/脚本报错）才退回
+  `canGoBack()` → `goBack()`，再不行 `finish()` 兜底。
+  **永远不要**在回调里 `setEnabled(false)`——禁用后本 Activity 生命周期内再也收不到返回。
+- **不要**把 `webView.goBack()` 当第一分支（2026-10-30，v1.0.19，ADR 0003）。
+  `goBack` 只认「上一页文档」，看不到页面内还开着的确认框/抽屉；工作区子页面不压占位历史，
+  于是 `goBack` 会把整个页面换成 `/home`，弹层连同未处理内容一起丢掉。交给 `zpSystemBack`
+  才是先关层、再导航，且不写历史。
 - Web 侧对应入口是 `window.zpSystemBack()`（`js/ui/back.js`，服务端仓库）。删改任一侧都要同步：
   名字对不上就是「返回键没反应」这类静默故障（2026-10-30 就发生过一次：拆分 `ui-unified.js` 时该入口丢失）。
 - 真正的「退出 App」永远由 Web 回调 `ZhipeiNative.exitApp()`，原生不自带第二套退出逻辑。
+  Web 侧 `zpDoExit()` 检测到 `ZhipeiNative` 就直接 `exitApp()`，不再 `history.back()`——
+  WebView 里 back 只退回上一页，退不出应用。
+- 契约由 `npm run check:back`（`scripts/check-back-channel.mjs`）守，CI 在 assembleDebug 前执行。
 
 ## 5. 7 个原生桥方法（删改即破坏网页端功能）
 
