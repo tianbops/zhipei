@@ -13,7 +13,8 @@
     "android:open": "npx cap open android",
     "android:apk": "cd android && ./gradlew assembleDebug --no-daemon",
     "android:release": "cd android && ./gradlew assembleRelease --no-daemon",
-    "android:aab": "cd android && ./gradlew bundleRelease --no-daemon"
+    "android:aab": "cd android && ./gradlew bundleRelease --no-daemon",
+    "check:theme": "node scripts/check-native-theme-popup.mjs"
   },
   "devDependencies": {
     "@capacitor/android": "^7.0.0",
