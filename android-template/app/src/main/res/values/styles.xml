@@ -13,12 +13,16 @@
         <item name="android:background">@null</item>
     </style>
 
-    <!-- 启动主题：Android 12 以下用 windowBackground 的启动图，
-         Android 12 及以上系统改用 windowSplashScreen* 系列属性 -->
+    <!-- 启动主题：Android 12 以下用 windowBackground 的纯色启动屏，
+         Android 12 及以上系统改用 windowSplashScreen* 系列属性。
+         2026-10-30：启动色跟随系统外观（day/night 资源限定符自动切换）：
+           · splashBackground 浅色 #F6F7F9 / 深色 #121826（values-night 覆盖），
+             与 Web 页面背景色一致，消除「黑→白」闪变；
+           · 启动图标改用自带深色底盘的 splash_badge（白卡车），浅底上依旧可见。 -->
     <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBar">
-        <item name="android:windowBackground">@drawable/splash</item>
+        <item name="android:windowBackground">@color/splashBackground</item>
         <item name="android:windowSplashScreenBackground">@color/splashBackground</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_badge</item>
     </style>
 
 </resources>

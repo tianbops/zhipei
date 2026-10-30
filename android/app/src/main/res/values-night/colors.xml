@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 深色外观：启动屏 / 窗口背景与 Web 深色页面背景一致。
+     资源限定符 -night 由 AppTheme 的 DayNight 父主题自动选用。 -->
+<resources>
+    <color name="splashBackground">#121826</color>
+</resources>
