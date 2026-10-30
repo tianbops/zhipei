@@ -210,6 +210,9 @@ jobs:
   # 并更新 manifest.json 与 version.json（version.json = tag 号）。
   # 这是「git tag 为唯一版本真值源」的关键：发版后关于页版本号与下载的 APK
   # 永远一致，不再有人工改 version.json、不再版本漂移。
+  # 镜像文件名必须带版本号（zhipei-one-<ver>-release.apk），并顺手删掉旧版本包：
+  # 固定文件名会让系统下载器每次都写同一个路径，下载目录里留着上一版，用户点开
+  # 哪一个是随机的——2026-10-30 的「装了 V1.0.19 还是旧版」即由此而来。
   # 此外会在 zhipei-one 仓库建一个同 tag 的发行版，使 GitHub 首页 Latest 显示
   # 真实当前版本（而非陈旧历史 tag）。
   # 提交会触发 Cloudflare Pages 重新部署。内容无变化时跳过文件提交，避免空部署。
@@ -318,12 +321,16 @@ jobs:
 
           apk_sha = new_blob(apk, b64=True)
           today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).strftime("%Y-%m-%d")
+          # 文件名必须带版本号。固定名（zhipei-one-latest-release.apk）会让系统下载器
+          # 每次都往同一路径写，下载目录里躺着上一版；用户从通知栏/文件管理器点开
+          # 哪一个是不确定的。2026-10-30 就是因此出现「点了 1.0.19，装上还是 1.0.18」。
+          apk_name = "zhipei-one-%s-release.apk" % VER
           manifest = (json.dumps({
               "version": VER,
-              "file": "zhipei-one-latest-release.apk",
+              "file": apk_name,
               "size": len(apk),
               "updated": today,
-              "note": "发新版时：替换同目录 latest APK + 更新 version/updated，页面无需改动",
+              "note": "文件名必须带版本号：固定名会让手机把上次下载的旧包当成本次结果（同名文件），装上去还是旧版本",
           }, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
           mf_sha = new_blob(manifest)
           # 关于页版本号 = tag 号（git tag 为唯一真值源）。web-only 改动不发新 APK，
@@ -332,9 +339,17 @@ jobs:
           vers_sha = new_blob(vers)
 
           head = api("https://api.github.com/repos/%s/git/ref/heads/main" % DST)["object"]["sha"]
-          files = [("downloads/zhipei-one-latest-release.apk", apk_sha),
+          files = [("downloads/" + apk_name, apk_sha),
                    ("downloads/manifest.json", mf_sha),
                    ("version.json", vers_sha)]
+          # 只保留当前版本的 APK：旧包留着不但占仓库，还会被用户误点
+          stale = []
+          try:
+              listing = api("https://api.github.com/repos/%s/contents/downloads?ref=main" % DST)
+              stale = [i["name"] for i in listing
+                       if i["name"].endswith(".apk") and i["name"] != apk_name]
+          except Exception as e:
+              print("读取 downloads 目录失败，跳过旧包清理：%s" % e)
           changed = []
           for path, sha in files:
               try:
@@ -344,6 +359,8 @@ jobs:
                   same = False
               if not same:
                   changed.append(path)
+          if stale:
+              changed.append("删除旧包 " + ", ".join(stale))
           if not changed:
               print("文件内容无变化，跳过提交")
           else:
@@ -352,6 +369,9 @@ jobs:
                   print("DRY-RUN：不提交")
               else:
                   tree = [{"path": p, "mode": "100644", "type": "blob", "sha": s} for p, s in files]
+                  # sha=null 即从树上摘掉（Git tree API 的删除语义）
+                  tree += [{"path": "downloads/" + n, "mode": "100644", "type": "blob", "sha": None}
+                           for n in stale]
                   t = api("https://api.github.com/repos/%s/git/trees" % DST, "POST",
                           {"base_tree": head, "tree": tree})
                   c = api("https://api.github.com/repos/%s/git/commits" % DST, "POST",
