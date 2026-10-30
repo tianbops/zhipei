@@ -13,7 +13,7 @@
 
 - `www/` 里**只有** `offline.html`——没有业务页面，没有业务 JS，没有 CSS。
 - 所有界面、逻辑、样式、会话，全部来自 Web 端仓库 `tianbops/zhipei-one`。
-- 本仓只做三件事：**加载远程页面** + **暴露 8 个原生桥方法** + **打包签名分发**。
+- 本仓只做三件事：**加载远程页面** + **暴露 9 个原生桥方法** + **打包签名分发**。
 - **没有本地数据层**：无 SharedPreferences / SQLite / Room / 文件缓存。
 
 因此：改界面不要在这里改（去 Web 仓）；这里的每一行代码都影响**所有**用户的启动与原生能力。
@@ -106,7 +106,7 @@ git push origin main
   WebView 里 back 只退回上一页，退不出应用。
 - 契约由 `npm run check:back`（`scripts/check-back-channel.mjs`）守，CI 在 assembleDebug 前执行。
 
-## 5. 8 个原生桥方法（删改即破坏网页端功能）
+## 5. 9 个原生桥方法（删改即破坏网页端功能）
 
 | 方法 | 签名 | 网页端用途 |
 |---|---|---|
@@ -116,6 +116,7 @@ git push origin main
 | `appVersionCode` | `() int` | 版本比较 |
 | `getClipboardText` | `() String` | 首页「一键粘贴」 |
 | `haptic` | `(String kind)` | 底部导航/底部按钮触感（light/medium/success/warn） |
+| `webReady` | `()` | 网页首帧就绪，撤下启动屏（js/boot-ready.js 调用） |
 | `downloadApk` | `(String url)` | 设置页「更新到 Vx.x.x」 |
 | `exitApp` | `()` | 退出 |
 
@@ -123,6 +124,19 @@ git push origin main
 1. `android-template/` 与 `android/` 两侧（否则漂移守卫红）；
 2. Web 仓 `js/` 中的调用点（跨仓跑 `node scripts/check-bridge-contract.mjs --web <zhipei-one 路径>`）；
 3. Web 仓的降级路径（桥不存在时网页必须能优雅退化，不能报错）。
+
+### 启动屏：按「首屏就绪」退，不按「窗口首帧」退
+
+首屏是远程网页，从窗口画出第一帧到网页真正有内容还要 1.5~2 秒。若启动屏按窗口首帧
+退出，这段就是空窗（用户看到的是纯色/黑屏）。做法（v1.0.22 起）：
+
+- 主题 `AppTheme.NoActionBarLaunch` 继承 `Theme.SplashScreen`（androidx core-splashscreen）；
+- `MainActivity.installLaunchScreen()` 在 `super.onCreate()` **之前** `installSplashScreen`，
+  并 `setKeepOnScreenCondition(() -> !sWebReady)`，6 秒超时兜底；
+- 网页侧 `js/boot-ready.js` 在双 rAF（首帧上屏）后调 `webReady()` 放行；
+- 启动期底色按「上次网页主题（SharedPreferences）→ 系统外观」推断，不再写死深色。
+
+任一环失效都不会报错，只会让空窗回来。`npm run check:launch` 守这条链路。
 
 ## 6. 更新通道（已建成，勿重造）
 

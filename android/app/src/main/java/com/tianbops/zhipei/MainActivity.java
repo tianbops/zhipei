@@ -4,11 +4,15 @@ import android.app.DownloadManager;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.style.AbsoluteSizeSpan;
@@ -23,6 +27,7 @@ import android.widget.Toast;
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.graphics.Insets;
+import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -45,17 +50,30 @@ import com.getcapacitor.BridgeActivity;
  */
 public class MainActivity extends BridgeActivity {
 
-    /** 首帧兜底色：与 web 深色主题背景 --zp-bg（#121826）逐值一致。
-     *  历史值 #05070A 是更早的「近黑导航条」配色，网页把底栏/板块统一成 #121826
-     *  之后，首帧状态栏会在页面上沿留下一条明显更黑的横带（用户反馈「顶部安卓
-     *  状态栏黑色」），故与网页主题色对齐。 */
-    private static final int DEFAULT_BG = Color.parseColor("#121826");
+    /** 首帧兜底色：与 web 主题背景逐值一致（深色 #121826 / 浅色 #F6F7F9）。
+     *  历史值 #05070A 是更早的「近黑导航条」配色；后来固定成 #121826 又造成
+     *  「浅色启动屏 → 深色空窗 → 浅色页面」的两次闪变（用户录屏反馈）。
+     *  现在改为按「上次网页主题 → 系统外观」推断，见 initialChromeColor()。 */
+    private static final int BG_DARK = Color.parseColor("#121826");
+    private static final int BG_LIGHT = Color.parseColor("#F6F7F9");
+    /** 记住网页上次使用的主题，下次冷启动首帧就能用对底色（无记录时退回系统外观）。 */
+    private static final String PREFS = "zp_shell";
+    private static final String PREF_DARK = "dark_chrome";
+    /** 启动屏最长保持时间：Web 首帧迟迟不来（离线/极端弱网）时强制放行，
+     *  否则用户会一直停在 logo 上，比看到骨架页更糟。 */
+    private static final long SPLASH_TIMEOUT_MS = 6000L;
+
+    /** Web 首帧是否已就绪（js/boot-ready.js 通过桥方法 webReady() 置位）。
+     *  刻意用 static：Activity 因深色模式/字号等配置变化重建时，启动屏不应再出现一次。
+     *  volatile 是跨线程（JS 桥线程写、UI 线程每帧读）的可见性保证。 */
+    private static volatile boolean sWebReady = false;
 
     private WebView webViewRef;
     /** 返回键接管回调（AndroidX OnBackPressedDispatcher）。 */
     private OnBackPressedCallback backCallback;
-    private int chromeColor = DEFAULT_BG;
-    private boolean darkChrome = true;
+    private SplashScreen splashScreen;
+    private int chromeColor = BG_LIGHT;
+    private boolean darkChrome = false;
     /** 网页「全局文字大小」缩放（0.85–1.3，默认 1）。网页内文字由页面自身缩放，
      *  壳只用它放大原生 Toast 等浮层文字；JS Bridge 线程写、UI 线程读，加 volatile。 */
     private volatile float fontScale = 1f;
@@ -66,9 +84,36 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // 必须在 super.onCreate() 之前：installSplashScreen 会在此刻把主题从
+        // AppTheme.NoActionBarLaunch 换成 postSplashScreenTheme（AppTheme.NoActionBar）。
+        // 放到 super 之后会因为 Activity 已按启动主题完成初始化而失效。
+        installLaunchScreen();
         super.onCreate(savedInstanceState);
         installBackCallback();
         configureWebView();
+    }
+
+    /**
+     * 启动屏接管（androidx core-splashscreen）。
+     *
+     * 为什么要自己接管：系统启动屏的默认生命周期是「窗口画出第一帧就退出」。本 App 的
+     * 首屏是远程网页，从窗口首帧到网页真正画出内容还有 1.5~2 秒，这段就是用户看到的
+     * 空窗（v1.0.21 前是黑屏，之后是深色底）。成熟 App 的做法一致：启动屏不按「窗口
+     * 首帧」退，而是按「首屏内容就绪」退——系统 keepOnScreenCondition 正是为此提供的。
+     *
+     * 退出动画由系统完成：Android 12+ 是图标淡出 + 页面淡入，低版本由 compat 实现近似效果。
+     */
+    private void installLaunchScreen() {
+        try {
+            splashScreen = SplashScreen.installSplashScreen(this);
+            // 网页首帧就绪前一直显示启动屏；WebView 在它背后静默加载。
+            splashScreen.setKeepOnScreenCondition(() -> !sWebReady);
+        } catch (Throwable t) {
+            // 主题被改坏等极端情况：宁可退回「窗口背景即启动屏」的旧行为，也不能起不来。
+            splashScreen = null;
+        }
+        // 兜底放行：网页 6 秒都没就绪（离线、弱网、白屏）时不要让用户停在 logo 上。
+        new Handler(Looper.getMainLooper()).postDelayed(() -> sWebReady = true, SPLASH_TIMEOUT_MS);
     }
 
     /**
@@ -153,7 +198,33 @@ public class MainActivity extends BridgeActivity {
         webView.setDownloadListener((url, userAgent, contentDisposition, mimetype, contentLength) ->
                 startDownload(url, userAgent, contentDisposition, mimetype));
         applySystemBarInsets(webView);
-        applyChrome(DEFAULT_BG, true);
+        // 首帧底色按「网页上次主题 → 系统外观」推断。此前写死深色，网页 head 里的
+        // theme-sync 跑起来才回浅色，于是启动屏退出后先看到一整屏深色，再闪一下变浅。
+        int bg = initialChromeColor();
+        applyChrome(bg, bg == BG_DARK);
+    }
+
+    /**
+     * 冷启动时该用哪种底色：优先「网页上次记住的主题」，没有记录再跟随系统外观。
+     *
+     * 网页把主题存在 localStorage（壳读不到），所以由 applyChrome 在原生侧同步一份到
+     * SharedPreferences。这样「App 内设浅色 + 系统深色」的用户，冷启动首帧也是浅色，
+     * 不会出现「深色一闪 → 变浅」。
+     */
+    private int initialChromeColor() {
+        boolean dark;
+        try {
+            SharedPreferences sp = getSharedPreferences(PREFS, MODE_PRIVATE);
+            if (sp.contains(PREF_DARK)) {
+                dark = sp.getBoolean(PREF_DARK, false);
+            } else {
+                int mode = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+                dark = mode == Configuration.UI_MODE_NIGHT_YES;
+            }
+        } catch (Throwable t) {
+            dark = false;
+        }
+        return dark ? BG_DARK : BG_LIGHT;
     }
 
     /**
@@ -270,6 +341,12 @@ public class MainActivity extends BridgeActivity {
     private void applyChrome(int color, boolean darkBg) {
         chromeColor = color;
         darkChrome = darkBg;
+        // 记住网页当前主题，供下次冷启动的首帧底色使用（见 initialChromeColor）。
+        try {
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(PREF_DARK, darkBg).apply();
+        } catch (Throwable t) {
+            // 存不下只是丢了首帧优化，不影响功能。
+        }
         // App 日夜间模式与网页主题同步：WebView 的原生弹层（select 下拉、
         // 日期选择对话框）在不少内核版本不读网页的 CSS color-scheme，
         // 只认宿主 Activity 的 uiMode——系统浅色 + 网页深色时，弹层会一直
@@ -330,11 +407,31 @@ public class MainActivity extends BridgeActivity {
         return HapticFeedbackConstants.VIRTUAL_KEY;
     }
 
-    /** 供网页调用：window.ZhipeiNative.applyTheme("#05070A", true) */
+    /** 供网页调用的原生通道：window.ZhipeiNative.* */
     private class NativeChrome {
+        /**
+         * 供网页调用：window.ZhipeiNative.webReady()。
+         *
+         * 网页首屏（含骨架）完成首帧绘制后调用一次，原生据此撤下启动屏。
+         * 这是「启动屏按内容就绪退出，而不是按窗口首帧退出」的握手点：
+         * 没有它，启动屏会在 WebView 还没画出任何东西时就消失，留下 1~2 秒空窗。
+         *
+         * 只在首次生效：后续页面跳转不会让启动屏复活（sWebReady 是进程级标记）。
+         * 内部对 sWebReady 做幂等判断，重复调用无副作用。
+         */
+        @JavascriptInterface
+        public void webReady() {
+            if (sWebReady) {
+                return;
+            }
+            sWebReady = true;
+            // keepOnScreenCondition 由系统在主线程逐帧轮询，volatile 写即可见；
+            // 这里不再切线程，避免在启动关键路径上多一次消息排队。
+        }
+
         @JavascriptInterface
         public void applyTheme(String colorHex, boolean darkBg) {
-            int color = parseColor(colorHex, DEFAULT_BG);
+            int color = parseColor(colorHex, chromeColor);
             // JS 接口跑在 JavaBridge 线程，UI 操作必须切回主线程。
             runOnUiThread(() -> applyChrome(color, darkBg));
         }
