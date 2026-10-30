@@ -56,6 +56,9 @@ jobs:
         # 启动屏必须继承 Theme.SplashScreen 并按 setKeepOnScreenCondition 等网页首帧，
         # 否则会退回「窗口首帧即退出」——远程首屏尚未绘制，用户会看到 1~2 秒空窗
         run: npm run check:launch
+      - name: Check native popup theme synchronization
+        # Web 深浅主题独立于系统外观，WebView 原生选择/日期弹层必须同步宿主 AppCompat uiMode。
+        run: npm run check:theme
       - name: Sync Capacitor
         run: npx cap sync android
       - name: Ensure Gradle wrapper is executable
