@@ -40,6 +40,7 @@ const CONTRACT = [
   { name: "appVersionCode", returns: "int", desc: "应用版本号（数字）" },
   { name: "applyTheme", returns: "void", desc: "同步原生弹层主题" },
   { name: "setFontScale", returns: "void", desc: "同步全局字号" },
+  { name: "haptic", returns: "void", desc: "按钮触感（light/medium/success/warn）" },
   { name: "downloadApk", returns: "void", desc: "直接下载 APK" },
   { name: "exitApp", returns: "void", desc: "退出 App" },
 ];
@@ -51,6 +52,13 @@ const WEB_CALLERS = [
     // 匹配 window.ZhipeiNative.getClipboardText / nat.getClipboardText
     pattern: /ZhipeiNative[\s\S]{0,80}?getClipboardText|\bgetClipboardText\s*\(/g,
     method: "getClipboardText",
+  },
+  {
+    // 底部导航触感：网页侧 js/ui/haptic.js 调 nat.haptic(kind)，
+    // 原生侧漏了方法只会「点了没震动」，和剪贴板一样属于静默失效，必须纳入契约。
+    file: "js/ui/haptic.js",
+    pattern: /ZhipeiNative[\s\S]{0,80}?haptic|\bhaptic\s*\(/g,
+    method: "haptic",
   },
 ];
 

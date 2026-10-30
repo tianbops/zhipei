@@ -13,7 +13,7 @@
 
 - `www/` 里**只有** `offline.html`——没有业务页面，没有业务 JS，没有 CSS。
 - 所有界面、逻辑、样式、会话，全部来自 Web 端仓库 `tianbops/zhipei-one`。
-- 本仓只做三件事：**加载远程页面** + **暴露 7 个原生桥方法** + **打包签名分发**。
+- 本仓只做三件事：**加载远程页面** + **暴露 8 个原生桥方法** + **打包签名分发**。
 - **没有本地数据层**：无 SharedPreferences / SQLite / Room / 文件缓存。
 
 因此：改界面不要在这里改（去 Web 仓）；这里的每一行代码都影响**所有**用户的启动与原生能力。
@@ -106,7 +106,7 @@ git push origin main
   WebView 里 back 只退回上一页，退不出应用。
 - 契约由 `npm run check:back`（`scripts/check-back-channel.mjs`）守，CI 在 assembleDebug 前执行。
 
-## 5. 7 个原生桥方法（删改即破坏网页端功能）
+## 5. 8 个原生桥方法（删改即破坏网页端功能）
 
 | 方法 | 签名 | 网页端用途 |
 |---|---|---|
@@ -115,6 +115,7 @@ git push origin main
 | `appVersion` | `() String` | 设置页「当前版本」显示 |
 | `appVersionCode` | `() int` | 版本比较 |
 | `getClipboardText` | `() String` | 首页「一键粘贴」 |
+| `haptic` | `(String kind)` | 底部导航/底部按钮触感（light/medium/success/warn） |
 | `downloadApk` | `(String url)` | 设置页「更新到 Vx.x.x」 |
 | `exitApp` | `()` | 退出 |
 

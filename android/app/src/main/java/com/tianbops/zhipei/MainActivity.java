@@ -12,6 +12,7 @@ import android.os.Environment;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.style.AbsoluteSizeSpan;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
@@ -306,6 +307,29 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    /**
+     * 网页触感语义 → 系统 HapticFeedbackConstants。
+     * 语义只有四档（与 js/ui/haptic.js 的 KINDS 严格对齐），未知值按 light 处理：
+     * 上层写错 kind 时宁可轻震一下，也不要静默不震——静默会让「没生效」难以定位。
+     * CONFIRM / REJECT 是 API 30 才引入的常量，minSdk 26 上按语义就近降级。
+     */
+    private static int hapticFeedback(String kind) {
+        if ("success".equals(kind)) {
+            return Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                    ? HapticFeedbackConstants.CONFIRM
+                    : HapticFeedbackConstants.VIRTUAL_KEY;
+        }
+        if ("warn".equals(kind)) {
+            return Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                    ? HapticFeedbackConstants.REJECT
+                    : HapticFeedbackConstants.LONG_PRESS;
+        }
+        if ("medium".equals(kind)) {
+            return HapticFeedbackConstants.CONTEXT_CLICK;
+        }
+        return HapticFeedbackConstants.VIRTUAL_KEY;
+    }
+
     /** 供网页调用：window.ZhipeiNative.applyTheme("#05070A", true) */
     private class NativeChrome {
         @JavascriptInterface
@@ -326,6 +350,32 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void setFontScale(float scale) {
             fontScale = Math.max(0.85f, Math.min(1.3f, scale));
+        }
+
+        /**
+         * 供网页调用：window.ZhipeiNative.haptic("light"|"medium"|"success"|"warn")。
+         *
+         * 为什么必须由壳来震：网页侧的 navigator.vibrate 在 WebView 上不可用
+         * （Chrome 要求 VIBRATE 权限，部分厂商内核根本没接振动通道），
+         * 底部导航点击的「触感」只能由原生补。见 js/ui/haptic.js 的通道选择。
+         *
+         * 为什么用 View.performHapticFeedback 而不是 Vibrator：
+         *   1) 不需要申请 VIBRATE 权限——少一条安装时可见的敏感权限；
+         *   2) 强度与时长交给系统按机型马达标定，比手写 vibrate(10) 更稳
+         *      （手写值在不同马达上会「太轻没感觉」或「太重吓人」）；
+         *   3) 天然尊重系统「触摸振动」总开关——用户关掉就不震，这正是应有行为。
+         * 因此本方法无返回值、也不抛出：网页不需要等待结果或重试。
+         */
+        @JavascriptInterface
+        public void haptic(String kind) {
+            final int feedback = hapticFeedback(kind);
+            // JS 接口跑在 JavaBridge 线程，View 操作必须切回主线程。
+            runOnUiThread(() -> {
+                View target = getWindow() != null ? getWindow().getDecorView() : webViewRef;
+                if (target != null) {
+                    target.performHapticFeedback(feedback);
+                }
+            });
         }
 
         /**
