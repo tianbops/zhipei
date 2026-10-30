@@ -13,16 +13,18 @@
         <item name="android:background">@null</item>
     </style>
 
-    <!-- 启动主题：Android 12 以下用 windowBackground 的纯色启动屏，
-         Android 12 及以上系统改用 windowSplashScreen* 系列属性。
-         2026-10-30：启动色跟随系统外观（day/night 资源限定符自动切换）：
-           · splashBackground 浅色 #F6F7F9 / 深色 #121826（values-night 覆盖），
-             与 Web 页面背景色一致，消除「黑→白」闪变；
-           · 启动图标改用自带深色底盘的 splash_badge（白卡车），浅底上依旧可见。 -->
-    <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBar">
-        <item name="android:windowBackground">@color/splashBackground</item>
-        <item name="android:windowSplashScreenBackground">@color/splashBackground</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_badge</item>
+    <!-- 启动主题（2026-10-30，v1.0.22）
+         改用 androidx core-splashscreen 的 Theme.SplashScreen：启动屏的生命周期不再由
+         「窗口画出第一帧」决定，而由 MainActivity 的 setKeepOnScreenCondition 决定，
+         一直保持到网页首帧就绪（桥方法 webReady）。远程首屏要 1.5 到 2 秒才画得出内容，
+         旧做法在这段时间会露出空白窗口，正是用户录屏里那段空窗。
+         配色走 day/night 资源限定符（splashBackground），与网页背景色一致。
+         postSplashScreenTheme 是启动屏退出后切回的主题，必须是 AppCompat 系。 -->
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splashBackground</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_badge</item>
+        <item name="windowSplashScreenAnimationDuration">240</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
 
 </resources>
