@@ -33,9 +33,10 @@ import com.getcapacitor.BridgeActivity;
  * 智配One 主界面。
  * 在 Capacitor 默认 BridgeActivity 之上只加了几件事：
  *   1. 返回键统一转交 Web 层中央控制器（js/ui/back.js 的 zpSystemBack/zpHandleBack）：
- *      有历史可退则 goBack 触发 popstate 让其分层关闭/离开；无历史可退则直接调用
- *      window.zpSystemBack()。「再按一次退出」与分层关闭语义全部由 Web 决定，
- *      原生不再自带第二套返回逻辑，保证顶部返回键/物理返回键/手势返回三者行为一致。
+ *      不判断 canGoBack、不走 webView.goBack()，一律调用 window.zpSystemBack()，
+ *      由 Web 决定「关最上层弹层 / 离开当前页 / 再按一次退出 / 直接退出」。
+ *      走 goBack 会把「上一页文档」当返回目标，跳过页面内的弹层；交给 Web 则先关层
+ *      再导航，且不写历史。JS 未就绪时才退回 goBack/finish 兜底。
  *   2. 仅当收到 Web 的退出指令（ZhipeiNative.exitApp()）才真正 finish() 结束 Activity。
  *   3. 系统栏 inset 转成 WebView 上下外边距，内容不压状态栏/手势条
  *   4. 状态栏/导航栏底色与图标明暗跟随「网页外观主题」（深色/浅色）
@@ -97,16 +98,27 @@ public class MainActivity extends BridgeActivity {
                     finish();
                     return;
                 }
-                // 有历史可退（工作区页进入时 back.js 压了占位历史）：goBack 触发 popstate，
-                // 由 Web 中央控制器决定「关闭最上层弹层 / 离开当前页 / 进入再按一次退出」。
-                if (webView.canGoBack()) {
-                    webView.goBack();
-                    return;
-                }
-                // 无历史可退（登录/引导页，或工作区根已消耗占位后的第二次返回）：
-                // 直接转交 Web 控制器。确认退出时由 Web 回调 ZhipeiNative.exitApp()，
-                // 原生不再自带「再按一次退出」——否则会与 Web 的提示叠加成双 Toast。
-                webView.evaluateJavascript("window.zpSystemBack && window.zpSystemBack()", null);
+                // 关键：返回键**一律**交给 Web 中央控制器，不再走 webView.goBack()。
+                //
+                // 为什么改（2026-10-30，v1.0.19）：goBack() 走的是 WebView 的「浏览历史」，
+                // 它只知道「上一页文档」，不知道「当前页还开着确认框/弹层」。工作区子页面
+                // 不压占位历史（为了不让首页反复退回内页），所以 goBack 会直接把整个页面
+                // 换成 /home，弹层连同未处理的内容一起被丢掉。交给 zpSystemBack 后，Web 先
+                // 用 zpCloseTopLayer 逐层关弹层、关完才导航，且全程不碰历史栈——不会产生
+                // 「留一条记录指向已离开页面」的孤儿，首页「只往桌面走」的保证因此更稳。
+                //
+                // JS 未就绪（首帧、脚本报错）时才退回 goBack/finish，保证返回键永不失灵。
+                webView.evaluateJavascript("(window.zpSystemBack?1:0)", value -> {
+                    if ("1".equals(value)) {
+                        webView.evaluateJavascript("window.zpSystemBack()", null);
+                        return;
+                    }
+                    if (webView.canGoBack()) {
+                        webView.goBack();
+                        return;
+                    }
+                    finish();
+                });
             }
         };
         getOnBackPressedDispatcher().addCallback(this, backCallback);
