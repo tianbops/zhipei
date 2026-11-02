@@ -59,7 +59,7 @@ const onCreateStart = main.indexOf("public void onCreate(Bundle savedInstanceSta
 const onCreateEnd = main.indexOf("private void configureTransparentStatusBar()", onCreateStart);
 const onCreateBody = onCreateStart >= 0 ? main.slice(onCreateStart, onCreateEnd > onCreateStart ? onCreateEnd : undefined) : "";
 check(onCreateBody.includes("initialChromeDark()")
-  && onCreateBody.indexOf("setDefaultNightMode") < onCreateBody.indexOf("super.onCreate"),
+  && onCreateBody.indexOf("setDefaultNightMode") < onCreateBody.indexOf("super.onCreate(savedInstanceState)"),
   "Activity 首帧前恢复 DayNight 模式，避免先绘制默认主题");
 check(/getSharedPreferences\(PREFS/.test(applyBody) && main.includes("initialChromeDark()"),
   "冷启动恢复上次主题，首次启动跟随系统外观");
