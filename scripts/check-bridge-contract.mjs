@@ -58,7 +58,7 @@ const WEB_CALLERS = [
   {
     // 分享入口统一走原生 Sharesheet；Web 端在 js/ui/share.js 调用。
     file: "js/ui/share.js",
-    pattern: /ZhipeiNative[\\s\\S]{0,80}?shareText|shareText\\s*\\(/g,
+    pattern: /ZhipeiNative[\s\S]{0,80}?shareText|shareText\s*\(/g,
     method: "shareText",
   },
   {
