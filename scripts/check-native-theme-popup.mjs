@@ -21,7 +21,8 @@ const manifest = read("android/app/src/main/AndroidManifest.xml");
 const templateManifest = read("android-template/app/src/main/AndroidManifest.xml");
 const styles = read("android/app/src/main/res/values/styles.xml");
 const templateStyles = read("android-template/app/src/main/res/values/styles.xml");
-const colors = read("android/app/src/main/res/values/colors.xml");
+const nightStyles = read("android/app/src/main/res/values-night/styles.xml");
+const templateNightStyles = read("android-template/app/src/main/res/values-night/styles.xml");const colors = read("android/app/src/main/res/values/colors.xml");
 const nightColors = read("android/app/src/main/res/values-night/colors.xml");
 const templateColors = read("android-template/app/src/main/res/values/colors.xml");
 const templateNightColors = read("android-template/app/src/main/res/values-night/colors.xml");
@@ -29,6 +30,11 @@ const templateNightColors = read("android-template/app/src/main/res/values-night
 check(main === template, "MainActivity 与 android-template 原生模板逐字节一致");
 check(manifest === templateManifest, "AndroidManifest 与原生模板逐字节一致");
 check(styles === templateStyles, "styles.xml 与原生模板逐字节一致");
+check(nightStyles === templateNightStyles, "values-night/styles.xml 与原生模板逐字节一致");
+check(/android:statusBarColor/.test(styles) && /@android:color\\/transparent/.test(styles), "日间主题声明透明状态栏");
+check(/android:windowLightStatusBar">true<\\/item>/.test(styles), "日间主题默认使用深色状态栏图标");
+check(/android:statusBarColor/.test(nightStyles) && /@android:color\\/transparent/.test(nightStyles), "夜间主题声明透明状态栏");
+check(/android:windowLightStatusBar">false<\\/item>/.test(nightStyles), "夜间主题默认使用浅色状态栏图标");
 check(colors === templateColors && nightColors === templateNightColors, "日间/夜间颜色资源与原生模板一致");
 check(/Theme\.AppCompat\.DayNight\.NoActionBar/.test(styles), "宿主主题使用 AppCompat DayNight");
 check(/configChanges="[^"]*uiMode/.test(manifest), "Activity 接收 uiMode 配置变化，不因主题同步重建页面");
@@ -36,12 +42,20 @@ check(/configChanges="[^"]*uiMode/.test(manifest), "Activity 接收 uiMode 配�
 const applyStart = main.indexOf("private void applyChrome(");
 const applyEnd = main.indexOf("\n    private static int parseColor", applyStart);
 const applyBody = applyStart >= 0 ? main.slice(applyStart, applyEnd > applyStart ? applyEnd : undefined) : "";
-check(/setStatusBarColor\(Color\.TRANSPARENT\)/.test(applyBody),
-  "运行期间 Android 状态栏背景保持透明");
-check(/setAppearanceLightStatusBars\(!darkBg\)/.test(applyBody) && /setAppearanceLightNavigationBars\(!darkBg\)/.test(applyBody),
+const configureStart = main.indexOf("private void configureTransparentStatusBar()");
+const configureEnd = main.indexOf("\\n    /**", configureStart);
+const configureBody = configureStart >= 0 ? main.slice(configureStart, configureEnd > configureStart ? configureEnd : undefined) : "";
+check(/configureTransparentStatusBar\\(\\)/.test(main), "Activity 创建时启用透明状态栏配置");
+check(/WindowCompat\\.setDecorFitsSystemWindows\\(getWindow\\(\\), false\\)/.test(configureBody)
+  && /setStatusBarColor\\(Color\\.TRANSPARENT\\)/.test(configureBody),
+  "Edge-to-Edge 与透明状态栏在首帧初始化阶段统一配置");
+check(!/setStatusBarColor\\(/.test(applyBody) && !/setStatusBarContrastEnforced\\(/.test(applyBody),
+  "主题切换期间不重复写状态栏背景或对比度策略");
+check(/setAppearanceLightStatusBars\\(!darkBg\\)/.test(applyBody) && /setAppearanceLightNavigationBars\\(!darkBg\\)/.test(applyBody),
   "状态栏与导航栏图标明暗跟随当前主题");
-check(/AppCompatDelegate\.setDefaultNightMode\(darkBg\s*\?\s*AppCompatDelegate\.MODE_NIGHT_YES\s*:\s*AppCompatDelegate\.MODE_NIGHT_NO\)/.test(applyBody),
-  "原生 DayNight 外观跟随网页主题");
+check(/AppCompatDelegate\\.getDefaultNightMode\\(\\)\\s*!=\\s*desiredNightMode/.test(applyBody)
+  && /AppCompatDelegate\\.setDefaultNightMode\\(desiredNightMode\\)/.test(applyBody),
+  "原生 DayNight 外观仅在主题实际变化时更新，避免重复重配置");
 check(/getSharedPreferences\(PREFS/.test(applyBody) && /initialChromeDark\(\)/.test(main),
   "冷启动恢复上次主题，首次启动跟随系统外观");
 check(/public void applyTheme\(String colorHex, boolean darkBg\)/.test(main) && /runOnUiThread\(\(\) -> applyChrome\(color, darkBg\)\)/.test(main),
