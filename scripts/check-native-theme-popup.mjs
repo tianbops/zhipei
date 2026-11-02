@@ -36,14 +36,17 @@ check(/configChanges="[^"]*uiMode/.test(manifest), "Activity 接收 uiMode 配�
 const applyStart = main.indexOf("private void applyChrome(");
 const applyEnd = main.indexOf("\n    private static int parseColor", applyStart);
 const applyBody = applyStart >= 0 ? main.slice(applyStart, applyEnd > applyStart ? applyEnd : undefined) : "";
-check(/AppCompatDelegate\.setDefaultNightMode\(darkBg\s*\?\s*AppCompatDelegate\.MODE_NIGHT_YES\s*:\s*AppCompatDelegate\.MODE_NIGHT_NO\)/.test(applyBody),
-  "applyChrome 将 Web 深浅主题同步到 AppCompat uiMode");
-check(/setAppearanceLightStatusBars\(!darkBg\)/.test(applyBody) && /setAppearanceLightNavigationBars\(!darkBg\)/.test(applyBody),
-  "状态栏与导航栏图标明暗跟随同一主题");
+check(/color\s*=\s*BG_DARK/.test(applyBody) && /darkBg\s*=\s*true/.test(applyBody) && /AppCompatDelegate\.setDefaultNightMode\(AppCompatDelegate\.MODE_NIGHT_YES\)/.test(applyBody),
+  "applyChrome 强制原生界面使用深色与品牌黑底");
+check(/setAppearanceLightStatusBars\(false\)/.test(applyBody) && /setAppearanceLightNavigationBars\(false\)/.test(applyBody),
+  "黑色状态栏与导航栏固定使用浅色图标");
 check(/public void applyTheme\(String colorHex, boolean darkBg\)/.test(main) && /runOnUiThread\(\(\) -> applyChrome\(color, darkBg\)\)/.test(main),
   "applyTheme 原生桥存在且在 UI 线程更新主题");
-check(/splashBackground/.test(colors) && /#F6F7F9/i.test(colors) && /#121826/i.test(nightColors),
-  "启动屏日间/夜间底色分别与 Web 浅色/深色背景一致");
+check(/splashBackground/.test(colors) && /#05070A/i.test(colors) && /#05070A/i.test(nightColors),
+  "启动屏日间/夜间资源统一为品牌黑 #05070A");
+const capacitor = JSON.parse(read("capacitor.config.json"));
+check(capacitor.plugins?.SplashScreen?.backgroundColor === "#05070A",
+  "Capacitor 启动屏背景与原生 logo 底色一致");
 
 if (errors.length) {
   console.error("\n✗ 原生弹层主题契约失败：");
