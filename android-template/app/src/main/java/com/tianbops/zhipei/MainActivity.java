@@ -45,7 +45,7 @@ import com.getcapacitor.BridgeActivity;
  *      再导航，且不写历史。JS 未就绪时才退回 goBack/finish 兜底。
  *   2. 仅当收到 Web 的退出指令（ZhipeiNative.exitApp()）才真正 finish() 结束 Activity。
  *   3. 系统栏 inset 转成 WebView 上下外边距，内容不压状态栏/手势条
- *   4. 状态栏/导航栏底色与图标明暗跟随「网页外观主题」（深色/浅色）
+ *   4. 状态栏/导航栏固定使用品牌黑底与浅色图标
  * 业务代码一行没动，全部走 WebView 里的 web 端。
  */
 public class MainActivity extends BridgeActivity {
