@@ -43,6 +43,7 @@ const CONTRACT = [
   { name: "haptic", returns: "void", desc: "按钮触感（light/medium/success/warn）" },
   { name: "webReady", returns: "void", desc: "网页首帧就绪，撤下启动屏" },
   { name: "downloadApk", returns: "void", desc: "直接下载 APK" },
+  { name: "shareText", returns: "void", desc: "调起 Android 系统文本分享面板" },
   { name: "exitApp", returns: "void", desc: "退出 App" },
 ];
 
@@ -53,6 +54,12 @@ const WEB_CALLERS = [
     // 匹配 window.ZhipeiNative.getClipboardText / nat.getClipboardText
     pattern: /ZhipeiNative[\s\S]{0,80}?getClipboardText|\bgetClipboardText\s*\(/g,
     method: "getClipboardText",
+  },
+  {
+    // 分享入口统一走原生 Sharesheet；Web 端在 js/ui/share.js 调用。
+    file: "js/ui/share.js",
+    pattern: /ZhipeiNative[\s\S]{0,80}?shareText|shareText\s*\(/g,
+    method: "shareText",
   },
   {
     // 底部导航触感：网页侧 js/ui/haptic.js 调 nat.haptic(kind)，
