@@ -5,6 +5,7 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
@@ -45,13 +46,16 @@ import com.getcapacitor.BridgeActivity;
  *      再导航，且不写历史。JS 未就绪时才退回 goBack/finish 兜底。
  *   2. 仅当收到 Web 的退出指令（ZhipeiNative.exitApp()）才真正 finish() 结束 Activity。
  *   3. 系统栏 inset 转成 WebView 上下外边距，内容不压状态栏/手势条
- *   4. 状态栏/导航栏固定使用品牌黑底与浅色图标
+ *   4. 状态栏透明，图标明暗与网页外观主题同步
  * 业务代码一行没动，全部走 WebView 里的 web 端。
  */
 public class MainActivity extends BridgeActivity {
 
-    /** 启动、状态栏与 WebView 统一使用品牌黑底；logo 自带底色与之完全融合。 */
-    private static final int BG_DARK = Color.parseColor("#05070A");
+    /** 深色外观承接色；启动屏背景由 splashBackground 资源独立保持品牌黑。 */
+    private static final int BG_DARK = Color.parseColor("#121826");
+    private static final int BG_LIGHT = Color.parseColor("#F6F7F9");
+    private static final String PREFS = "zp_shell";
+    private static final String PREF_DARK = "dark_chrome";
     /** 启动屏最长保持时间：Web 首帧迟迟不来（离线/极端弱网）时强制放行，
      *  否则用户会一直停在 logo 上，比看到骨架页更糟。 */
     private static final long SPLASH_TIMEOUT_MS = 15000L;
@@ -65,8 +69,8 @@ public class MainActivity extends BridgeActivity {
     /** 返回键接管回调（AndroidX OnBackPressedDispatcher）。 */
     private OnBackPressedCallback backCallback;
     private SplashScreen splashScreen;
-    private int chromeColor = BG_DARK;
-    private boolean darkChrome = true;
+    private int chromeColor = BG_LIGHT;
+    private boolean darkChrome = false;
     /** 网页「全局文字大小」缩放（0.85–1.3，默认 1）。网页内文字由页面自身缩放，
      *  壳只用它放大原生 Toast 等浮层文字；JS Bridge 线程写、UI 线程读，加 volatile。 */
     private volatile float fontScale = 1f;
@@ -200,11 +204,25 @@ public class MainActivity extends BridgeActivity {
         applySystemBarInsets(webView);
         // 首帧底色按「网页上次主题 → 系统外观」推断。此前写死深色，网页 head 里的
         // theme-sync 跑起来才回浅色，于是启动屏退出后先看到一整屏深色，再闪一下变浅。
-        // 外观已固定为深色：首帧与启动屏、logo 底色统一使用品牌黑。
-        applyChrome(BG_DARK, true);
+        // 状态栏透明，窗口/WebView 背景与上次主题一致；启动屏仍独立保持品牌黑。
+        applyChrome(initialChromeColor(), initialChromeDark());
     }
 
-    private int initialChromeColor() { return BG_DARK; }
+    /** 冷启动优先恢复网页上次主题；首次启动时跟随系统外观。 */
+    private boolean initialChromeDark() {
+        try {
+            SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+            if (prefs.contains(PREF_DARK)) return prefs.getBoolean(PREF_DARK, false);
+        } catch (Throwable ignored) {
+            // 无法读取偏好时退回系统外观。
+        }
+        int mode = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+        return mode == Configuration.UI_MODE_NIGHT_YES;
+    }
+
+    private int initialChromeColor() {
+        return initialChromeDark() ? BG_DARK : BG_LIGHT;
+    }
 
     /**
      * 统一的 APK 下载入口：DownloadListener 与 JS 接口 downloadApk() 共用。
@@ -318,23 +336,31 @@ public class MainActivity extends BridgeActivity {
      * 系统与 App 外观不一致时也不会再吞掉状态栏。
      */
     private void applyChrome(int color, boolean darkBg) {
-        // 兼容旧网页桥参数，但产品外观已固定为深色，原生层不再接受浅色主题。
-        color = BG_DARK;
-        darkBg = true;
-        chromeColor = BG_DARK;
-        darkChrome = true;
-        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
-        getWindow().setStatusBarColor(color);
+        // 状态栏保持透明；顶部 inset 区域由 DecorView 背景承接当前页面主题色，
+        // 既与页面融为一体，又保留现有安全区边距，避免标题/按钮被系统图标遮挡。
+        chromeColor = color;
+        darkChrome = darkBg;
+        try {
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(PREF_DARK, darkBg).apply();
+        } catch (Throwable ignored) {
+            // 偏好写入失败不影响本次主题显示。
+        }
+        AppCompatDelegate.setDefaultNightMode(darkBg
+                ? AppCompatDelegate.MODE_NIGHT_YES
+                : AppCompatDelegate.MODE_NIGHT_NO);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
         getWindow().setNavigationBarColor(color);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            getWindow().setStatusBarContrastEnforced(false);
             getWindow().setNavigationBarContrastEnforced(false);
         }
         if (webViewRef != null) webViewRef.setBackgroundColor(color);
         getWindow().getDecorView().setBackgroundColor(color);
         WindowInsetsControllerCompat c =
                 new WindowInsetsControllerCompat(getWindow(), getWindow().getDecorView());
-        c.setAppearanceLightStatusBars(false);
-        c.setAppearanceLightNavigationBars(false);
+        // true = 浅色背景配深色系统图标；false = 深色背景配浅色系统图标。
+        c.setAppearanceLightStatusBars(!darkBg);
+        c.setAppearanceLightNavigationBars(!darkBg);
     }
 
     private static int parseColor(String hex, int fallback) {
