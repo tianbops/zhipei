@@ -364,6 +364,14 @@ public class MainActivity extends BridgeActivity {
         } catch (Throwable ignored) {
             // 偏好写入失败不影响本次主题显示。
         }
+        // 先更新透明状态栏后方的实际窗口/WebView 底色，再执行 DayNight 重配置；
+        // 这样系统切换主题时不会先露出上一主题的黑/白色窗口底板。
+        if (webViewRef != null) webViewRef.setBackgroundColor(color);
+        getWindow().getDecorView().setBackgroundColor(color);
+        getWindow().setNavigationBarColor(color);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            getWindow().setNavigationBarContrastEnforced(false);
+        }
         int desiredNightMode = darkBg
                 ? AppCompatDelegate.MODE_NIGHT_YES
                 : AppCompatDelegate.MODE_NIGHT_NO;
@@ -372,12 +380,6 @@ public class MainActivity extends BridgeActivity {
             AppCompatDelegate.setDefaultNightMode(desiredNightMode);
         }
         // 状态栏背景在主题资源与 onCreate 中一次性固定透明；切换期间不再写它。
-        getWindow().setNavigationBarColor(color);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            getWindow().setNavigationBarContrastEnforced(false);
-        }
-        if (webViewRef != null) webViewRef.setBackgroundColor(color);
-        getWindow().getDecorView().setBackgroundColor(color);
         WindowInsetsControllerCompat c =
                 new WindowInsetsControllerCompat(getWindow(), getWindow().getDecorView());
         // true = 浅色背景配深色系统图标；false = 深色背景配浅色系统图标。
