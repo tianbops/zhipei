@@ -18,7 +18,7 @@
          「窗口画出第一帧」决定，而由 MainActivity 的 setKeepOnScreenCondition 决定，
          一直保持到网页首帧就绪（桥方法 webReady）。远程首屏要 1.5 到 2 秒才画得出内容，
          旧做法在这段时间会露出空白窗口，正是用户录屏里那段空窗。
-         配色走 day/night 资源限定符（splashBackground），与网页背景色一致。
+         背景固定为品牌黑 #05070A，logo 自带黑底与启动屏背景无缝融合，不随系统外观切换。
          postSplashScreenTheme 是启动屏退出后切回的主题，必须是 AppCompat 系。 -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/splashBackground</item>
