@@ -29,6 +29,9 @@ const REPO = path.resolve(__dirname, "..");
 
 const STYLES = path.join(REPO, "android/app/src/main/res/values/styles.xml");
 const MAIN = path.join(REPO, "android/app/src/main/java/com/tianbops/zhipei/MainActivity.java");
+const COLORS = path.join(REPO, "android/app/src/main/res/values/colors.xml");
+const NIGHT_COLORS = path.join(REPO, "android/app/src/main/res/values-night/colors.xml");
+const SPLASH_BADGE = path.join(REPO, "android/app/src/main/res/drawable/splash_badge.xml");
 const LAUNCH_THEME = "AppTheme.NoActionBarLaunch";
 
 const errors = [];
@@ -44,6 +47,9 @@ function read(p) {
 
 const styles = read(STYLES);
 const main = read(MAIN);
+const colors = read(COLORS);
+const nightColors = read(NIGHT_COLORS);
+const splashBadge = read(SPLASH_BADGE);
 
 /* ---------- 1. 启动主题继承 Theme.SplashScreen ---------- */
 const styleBlock = (() => {
@@ -73,7 +79,20 @@ if (!styleBlock) {
   }
 }
 
-/* ---------- 2. installSplashScreen 必须在 super.onCreate 之前 ---------- */
+/* ---------- 2. 启动屏与 logo 使用同一品牌黑底 ---------- */
+if (!colors.includes('<color name="splashBackground">#05070A</color>') ||
+    !nightColors.includes('<color name="splashBackground">#05070A</color>')) {
+  errors.push("启动屏日间/夜间背景必须统一为品牌黑 #05070A（与 logo 底色融合）");
+}
+if (!styleBlock.includes('name="windowSplashScreenBackground">@color/splashBackground</item>')) {
+  errors.push("启动主题背景必须引用 splashBackground 品牌黑色资源");
+}
+if (!colors.includes('<color name="ic_launcher_background">#05070A</color>') ||
+    !splashBadge.includes("@drawable/ic_launcher_background")) {
+  errors.push("启动 logo 底盘必须使用与启动屏相同的品牌黑 #05070A");
+}
+
+/* ---------- 3. installSplashScreen 必须在 super.onCreate 之前 ---------- */
 if (!/SplashScreen\.installSplashScreen\(\s*this\s*\)/.test(main)) {
   errors.push("MainActivity 未调用 SplashScreen.installSplashScreen(this)");
 } else {
@@ -90,7 +109,7 @@ if (!/SplashScreen\.installSplashScreen\(\s*this\s*\)/.test(main)) {
   }
 }
 
-/* ---------- 3. 保持条件与超时兜底 ---------- */
+/* ---------- 4. 保持条件与超时兜底 ---------- */
 if (!/setKeepOnScreenCondition\(\s*\(\)\s*->\s*!\s*webReady\s*\)/.test(main)) {
   errors.push("未注册 setKeepOnScreenCondition(() -> !webReady) —— 启动屏会退回「窗口首帧即退出」");
 }

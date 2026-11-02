@@ -84,7 +84,7 @@ Actions 会打出 debug + release 两个包并挂到 Release。
 
 - App ID `com.tianbops.zhipei`（上架后不能改）
 - 最低系统 Android 8.0（API 26），见 `android/variables.gradle`
-- 原生主题基础色 `colorPrimary=#05070A`、图标底色 `#05070A`；启动屏背景按日夜资源切换：浅色 `#F6F7F9`、深色 `#121826`（见 `android/app/src/main/res/values[-night]/colors.xml`）
+- 原生主题基础色 `colorPrimary=#05070A`、图标底色 `#05070A`；启动屏固定为品牌黑 `#05070A`，居中 logo 的底色与启动背景完全融合（见 `android/app/src/main/res/values[-night]/colors.xml`）。Web/App 外观固定为深色，不提供浅色模式切换
 - 网页主题与原生状态栏/弹层同步；启动屏保持到 Web 首屏就绪（`webReady()` 桥接，最长 6 秒兜底），见 `MainActivity.java`
 - 返回键统一交给 Web 端中央返回控制器，见 `MainActivity.java` 与 Web 仓库 `js/ui/back.js`
 
