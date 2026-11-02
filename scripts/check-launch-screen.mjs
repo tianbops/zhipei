@@ -29,6 +29,8 @@ const REPO = path.resolve(__dirname, "..");
 
 const STYLES = path.join(REPO, "android/app/src/main/res/values/styles.xml");
 const MAIN = path.join(REPO, "android/app/src/main/java/com/tianbops/zhipei/MainActivity.java");
+const COLORS = path.join(REPO, "android/app/src/main/res/values/colors.xml");
+const NIGHT_COLORS = path.join(REPO, "android/app/src/main/res/values-night/colors.xml");
 const LAUNCH_THEME = "AppTheme.NoActionBarLaunch";
 
 const errors = [];
@@ -44,6 +46,8 @@ function read(p) {
 
 const styles = read(STYLES);
 const main = read(MAIN);
+const colors = read(COLORS);
+const nightColors = read(NIGHT_COLORS);
 
 /* ---------- 1. 启动主题继承 Theme.SplashScreen ---------- */
 const styleBlock = (() => {
@@ -73,7 +77,15 @@ if (!styleBlock) {
   }
 }
 
-/* ---------- 2. installSplashScreen 必须在 super.onCreate 之前 ---------- */
+/* ---------- 2. 启动屏与 logo 使用同一品牌黑底 ---------- */
+if (!/splashBackground[^>]*>#05070A<\\/color>/.test(colors) || !/splashBackground[^>]*>#05070A<\\/color>/.test(nightColors)) {
+  errors.push("启动屏日间/夜间背景必须统一为品牌黑 #05070A（与 logo 底色融合）");
+}
+if (!/windowSplashScreenBackground\\">\\@color\\/splashBackground/.test(styleBlock)) {
+  errors.push("启动主题背景必须引用 splashBackground 品牌黑色资源");
+}
+
+/* ---------- 3. installSplashScreen 必须在 super.onCreate 之前 ---------- */
 if (!/SplashScreen\.installSplashScreen\(\s*this\s*\)/.test(main)) {
   errors.push("MainActivity 未调用 SplashScreen.installSplashScreen(this)");
 } else {
@@ -90,7 +102,7 @@ if (!/SplashScreen\.installSplashScreen\(\s*this\s*\)/.test(main)) {
   }
 }
 
-/* ---------- 3. 保持条件与超时兜底 ---------- */
+/* ---------- 4. 保持条件与超时兜底 ---------- */
 if (!/setKeepOnScreenCondition\(\s*\(\)\s*->\s*!\s*webReady\s*\)/.test(main)) {
   errors.push("未注册 setKeepOnScreenCondition(() -> !webReady) —— 启动屏会退回「窗口首帧即退出」");
 }
