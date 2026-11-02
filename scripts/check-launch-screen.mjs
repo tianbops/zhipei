@@ -13,7 +13,7 @@
  *      否则启动屏退出后 Activity 仍套着启动主题，界面会异常；
  *   3. MainActivity 必须在 super.onCreate() 之前 installSplashScreen，
  *      放到之后调用不会生效（Activity 已按启动主题完成初始化）；
- *   4. 必须注册 keepOnScreenCondition，条件读 sWebReady；
+ *   4. 必须注册 keepOnScreenCondition，条件读 Activity 实例级 webReady；
  *   5. 必须有超时兜底，避免网页永不就绪时卡在启动屏。
  *
  * 用法：node scripts/check-launch-screen.mjs
@@ -91,11 +91,11 @@ if (!/SplashScreen\.installSplashScreen\(\s*this\s*\)/.test(main)) {
 }
 
 /* ---------- 3. 保持条件与超时兜底 ---------- */
-if (!/setKeepOnScreenCondition\(\s*\(\)\s*->\s*!\s*sWebReady\s*\)/.test(main)) {
-  errors.push("未注册 setKeepOnScreenCondition(() -> !sWebReady) —— 启动屏会退回「窗口首帧即退出」");
+if (!/setKeepOnScreenCondition\(\s*\(\)\s*->\s*!\s*webReady\s*\)/.test(main)) {
+  errors.push("未注册 setKeepOnScreenCondition(() -> !webReady) —— 启动屏会退回「窗口首帧即退出」");
 }
-if (!/sWebReady\s*=\s*true/.test(main)) {
-  errors.push("找不到 sWebReady 置位点（webReady 桥方法或超时兜底）");
+if (!/webReady\s*=\s*true/.test(main)) {
+  errors.push("找不到 webReady 置位点（webReady 桥方法或超时兜底）");
 }
 if (!/SPLASH_TIMEOUT_MS/.test(main) || !/postDelayed/.test(main)) {
   errors.push("缺少启动屏超时兜底 —— 网页永不就绪时用户会卡在 logo 上");
@@ -114,5 +114,5 @@ if (errors.length) {
 console.log("✓ 启动屏链路完整");
 console.log(`  · 启动主题 ${LAUNCH_THEME} 继承 Theme.SplashScreen`);
 console.log("  · installSplashScreen 位于 super.onCreate 之前");
-console.log("  · keepOnScreenCondition 读 sWebReady，带超时兜底");
+console.log("  · keepOnScreenCondition 读 webReady，带超时兜底");
 console.log("  · webReady() 桥方法存在");

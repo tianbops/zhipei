@@ -62,12 +62,12 @@ public class MainActivity extends BridgeActivity {
     private static final String PREF_DARK = "dark_chrome";
     /** 启动屏最长保持时间：Web 首帧迟迟不来（离线/极端弱网）时强制放行，
      *  否则用户会一直停在 logo 上，比看到骨架页更糟。 */
-    private static final long SPLASH_TIMEOUT_MS = 6000L;
+    private static final long SPLASH_TIMEOUT_MS = 15000L;
 
     /** Web 首帧是否已就绪（js/boot-ready.js 通过桥方法 webReady() 置位）。
      *  刻意用 static：Activity 因深色模式/字号等配置变化重建时，启动屏不应再出现一次。
      *  volatile 是跨线程（JS 桥线程写、UI 线程每帧读）的可见性保证。 */
-    private static volatile boolean sWebReady = false;
+    private volatile boolean webReady = false;
 
     private WebView webViewRef;
     /** 返回键接管回调（AndroidX OnBackPressedDispatcher）。 */
@@ -82,6 +82,7 @@ public class MainActivity extends BridgeActivity {
      *  此时直接 return 会让状态栏/边距修复全部失效（线上仍遮挡）。
      *  改为有限次延后重试，确保修复一定会执行。 */
     private int webViewRetry = 0;
+    private boolean webViewConfigured = false;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -90,6 +91,8 @@ public class MainActivity extends BridgeActivity {
         // 放到 super 之后会因为 Activity 已按启动主题完成初始化而失效。
         installLaunchScreen();
         super.onCreate(savedInstanceState);
+        // 启动主题切换后先设置窗口底色，避免 WebView 冷启动延迟时露出黑色空窗。
+        getWindow().getDecorView().setBackgroundColor(initialChromeColor());
         installBackCallback();
         configureWebView();
     }
@@ -108,13 +111,13 @@ public class MainActivity extends BridgeActivity {
         try {
             splashScreen = SplashScreen.installSplashScreen(this);
             // 网页首帧就绪前一直显示启动屏；WebView 在它背后静默加载。
-            splashScreen.setKeepOnScreenCondition(() -> !sWebReady);
+            splashScreen.setKeepOnScreenCondition(() -> !webReady);
         } catch (Throwable t) {
             // 主题被改坏等极端情况：宁可退回「窗口背景即启动屏」的旧行为，也不能起不来。
             splashScreen = null;
         }
         // 兜底放行：网页 6 秒都没就绪（离线、弱网、白屏）时不要让用户停在 logo 上。
-        new Handler(Looper.getMainLooper()).postDelayed(() -> sWebReady = true, SPLASH_TIMEOUT_MS);
+        new Handler(Looper.getMainLooper()).postDelayed(() -> webReady = true, SPLASH_TIMEOUT_MS);
     }
 
     /**
@@ -174,11 +177,15 @@ public class MainActivity extends BridgeActivity {
     private void configureWebView() {
         WebView webView = getBridge() != null ? getBridge().getWebView() : null;
         if (webView == null) {
-            if (webViewRetry++ < 30) {
+            // 冷启动时 Bridge/WebView 可能晚于 Activity 创建；延长重试窗口，
+            // 避免 3 秒后永久放弃注册原生桥，导致 webReady 永远无法到达。
+            if (!isFinishing() && !isDestroyed() && webViewRetry++ < 120) {
                 getWindow().getDecorView().postDelayed(this::configureWebView, 100);
             }
             return;
         }
+        if (webViewConfigured) return;
+        webViewConfigured = true;
         webViewRef = webView;
         webView.getSettings().setDomStorageEnabled(true);
         webView.getSettings().setDatabaseEnabled(true);
@@ -422,10 +429,10 @@ public class MainActivity extends BridgeActivity {
          */
         @JavascriptInterface
         public void webReady() {
-            if (sWebReady) {
+            if (webReady) {
                 return;
             }
-            sWebReady = true;
+            webReady = true;
             // keepOnScreenCondition 由系统在主线程逐帧轮询，volatile 写即可见；
             // 这里不再切线程，避免在启动关键路径上多一次消息排队。
         }
