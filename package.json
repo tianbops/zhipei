@@ -17,7 +17,7 @@
     "check:theme": "node scripts/check-native-theme-popup.mjs"
   },
   "devDependencies": {
-    "@capacitor/android": "^7.0.0",
+    "@capacitor/android": "^7.6.10",
     "@capacitor/cli": "^7.0.0",
     "@capacitor/core": "^7.0.0"
   }
