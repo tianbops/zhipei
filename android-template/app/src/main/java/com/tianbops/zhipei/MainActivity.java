@@ -85,12 +85,32 @@ public class MainActivity extends BridgeActivity {
         // 必须在 super.onCreate() 之前：installSplashScreen 会在此刻把主题从
         // AppTheme.NoActionBarLaunch 换成 postSplashScreenTheme（AppTheme.NoActionBar）。
         // 放到 super 之后会因为 Activity 已按启动主题完成初始化而失效。
+        // 在 Activity 首帧创建前确定 DayNight 模式，避免先按系统默认主题绘制再切换。
+        int launchNightMode = initialChromeDark()
+                ? AppCompatDelegate.MODE_NIGHT_YES
+                : AppCompatDelegate.MODE_NIGHT_NO;
+        if (AppCompatDelegate.getDefaultNightMode() != launchNightMode) {
+            AppCompatDelegate.setDefaultNightMode(launchNightMode);
+        }
         installLaunchScreen();
         super.onCreate(savedInstanceState);
-        // 启动主题切换后先设置窗口底色，避免 WebView 冷启动延迟时露出黑色空窗。
+        configureTransparentStatusBar();
+        // 启动主题切换后先设置窗口底色，避免 WebView 冷启动延迟时露出空窗。
         getWindow().getDecorView().setBackgroundColor(initialChromeColor());
         installBackCallback();
         configureWebView();
+    }
+
+    /**
+     * 系统状态栏在 Activity 首帧前即保持透明；主题切换只改变图标明暗，
+     * 不再反复写状态栏背景色，避免系统栏在 DayNight 重配置时短暂回退到默认色。
+     */
+    private void configureTransparentStatusBar() {
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            getWindow().setStatusBarContrastEnforced(false);
+        }
     }
 
     /**
@@ -291,8 +311,7 @@ public class MainActivity extends BridgeActivity {
                 applyInsetsMargins(webView, h, 0);
             }
         }
-        // 内容延伸到系统栏之下（由下面的边距让开），否则 inset 不会派发。
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        // Edge-to-Edge 已在 onCreate 首帧前启用；此处只接收 inset 并计算安全边距。
         final View decorView = getWindow().getDecorView();
         ViewCompat.setOnApplyWindowInsetsListener(decorView, (v, windowInsets) -> {
             Insets topBars = windowInsets.getInsets(
@@ -332,8 +351,8 @@ public class MainActivity extends BridgeActivity {
      *      深色页面上方就出现一条白条；
      *   2) 用户在 App 里切「深色外观」但系统是浅色模式时，图标仍是深色，
      *      深色图标压在深色页面上——状态栏直接看不见。
-     * 现在底色改为不透明并取网页主题色，图标明暗由「是否深色底」决定，
-     * 系统与 App 外观不一致时也不会再吞掉状态栏。
+     * 状态栏背景透明度由 DayNight 主题资源固定；运行时只更新图标明暗。
+     * 顶部 inset 区域仍由窗口背景承接页面主题色，保留原有安全区布局。
      */
     private void applyChrome(int color, boolean darkBg) {
         // 状态栏保持透明；顶部 inset 区域由 DecorView 背景承接当前页面主题色，
@@ -345,17 +364,22 @@ public class MainActivity extends BridgeActivity {
         } catch (Throwable ignored) {
             // 偏好写入失败不影响本次主题显示。
         }
-        AppCompatDelegate.setDefaultNightMode(darkBg
-                ? AppCompatDelegate.MODE_NIGHT_YES
-                : AppCompatDelegate.MODE_NIGHT_NO);
-        getWindow().setStatusBarColor(Color.TRANSPARENT);
-        getWindow().setNavigationBarColor(color);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            getWindow().setStatusBarContrastEnforced(false);
-            getWindow().setNavigationBarContrastEnforced(false);
-        }
+        // 先更新透明状态栏后方的实际窗口/WebView 底色，再执行 DayNight 重配置；
+        // 这样系统切换主题时不会先露出上一主题的黑/白色窗口底板。
         if (webViewRef != null) webViewRef.setBackgroundColor(color);
         getWindow().getDecorView().setBackgroundColor(color);
+        getWindow().setNavigationBarColor(color);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            getWindow().setNavigationBarContrastEnforced(false);
+        }
+        int desiredNightMode = darkBg
+                ? AppCompatDelegate.MODE_NIGHT_YES
+                : AppCompatDelegate.MODE_NIGHT_NO;
+        // 同一主题不重复触发 AppCompat DayNight 全局重配置。
+        if (AppCompatDelegate.getDefaultNightMode() != desiredNightMode) {
+            AppCompatDelegate.setDefaultNightMode(desiredNightMode);
+        }
+        // 状态栏背景在主题资源与 onCreate 中一次性固定透明；切换期间不再写它。
         WindowInsetsControllerCompat c =
                 new WindowInsetsControllerCompat(getWindow(), getWindow().getDecorView());
         // true = 浅色背景配深色系统图标；false = 深色背景配浅色系统图标。
