@@ -67,6 +67,8 @@ jobs:
         run: cd android && ./gradlew assembleDebug --no-daemon
 
       - name: Launch app in Android Emulator (non-blocking)
+        # 模拟器仅作附加冒烟；限制单步时间，启动环境异常时不占满整个构建任务窗口。
+        timeout-minutes: 12
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
