@@ -78,10 +78,11 @@ if (!styleBlock) {
 }
 
 /* ---------- 2. 启动屏与 logo 使用同一品牌黑底 ---------- */
-if (!/splashBackground[^>]*>#05070A<\\/color>/.test(colors) || !/splashBackground[^>]*>#05070A<\\/color>/.test(nightColors)) {
+if (!colors.includes('<color name="splashBackground">#05070A</color>') ||
+    !nightColors.includes('<color name="splashBackground">#05070A</color>')) {
   errors.push("启动屏日间/夜间背景必须统一为品牌黑 #05070A（与 logo 底色融合）");
 }
-if (!/windowSplashScreenBackground\\">\\@color\\/splashBackground/.test(styleBlock)) {
+if (!styleBlock.includes('name="windowSplashScreenBackground">@color/splashBackground</item>')) {
   errors.push("启动主题背景必须引用 splashBackground 品牌黑色资源");
 }
 
