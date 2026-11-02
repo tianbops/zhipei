@@ -1,0 +1,77 @@
+name: Create Android Release Tag
+
+on:
+  create:
+
+permissions:
+  contents: read
+
+jobs:
+  create-release-tag:
+    if: startsWith(github.ref, 'refs/heads/release-tag/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Validate release request and PAT write access
+        id: validate
+        env:
+          RELEASE_REF: ${{ github.ref }}
+          TARGET_SHA: ${{ github.sha }}
+          RELEASE_PAT: ${{ secrets.ZHIPEI_ONE_PAT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_REF" =~ ^refs/heads/release-tag/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid release request branch: $RELEASE_REF"
+            exit 1
+          fi
+          if [ -z "$RELEASE_PAT" ]; then
+            echo "::error::ZHIPEI_ONE_PAT is missing or empty"
+            exit 1
+          fi
+          TAG="${RELEASE_REF#refs/heads/release-tag/}"
+          # Prove the PAT can write to this Android repository before attempting
+          # any release operation. This creates only an unreferenced Git blob.
+          response="$(curl --silent --show-error --fail-with-body \
+            -X POST \
+            -H "Authorization: Bearer ${RELEASE_PAT}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/tianbops/zhipei/git/blobs \
+            -d '{"content":"release tag permission preflight","encoding":"utf-8"}')"
+          sha="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["sha"])' <<< "$response")"
+          test -n "$sha"
+          echo "PASS: PAT has contents:write on tianbops/zhipei."
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Create immutable release tag
+        env:
+          TAG: ${{ steps.validate.outputs.tag }}
+          TARGET_SHA: ${{ steps.validate.outputs.sha }}
+          RELEASE_PAT: ${{ secrets.ZHIPEI_ONE_PAT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/tianbops/zhipei"
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            -H "Authorization: Bearer ${RELEASE_PAT}" \
+            -H "Accept: application/vnd.github+json" \
+            "${API}/git/ref/tags/${TAG}")"
+          if [ "$status" = "200" ]; then
+            echo "::error::Tag ${TAG} already exists; refusing to move or overwrite it."
+            exit 1
+          fi
+          if [ "$status" != "404" ]; then
+            echo "::error::Unable to verify existing tag (HTTP ${status})."
+            exit 1
+          fi
+          curl --silent --show-error --fail-with-body \
+            -X POST \
+            -H "Authorization: Bearer ${RELEASE_PAT}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${API}/git/refs" \
+            -d "{\"ref\":\"refs/tags/${TAG}\",\"sha\":\"${TARGET_SHA}\"}" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print("Created", d["ref"], "->", d["object"]["sha"])'
