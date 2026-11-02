@@ -51,7 +51,7 @@ import com.getcapacitor.BridgeActivity;
  */
 public class MainActivity extends BridgeActivity {
 
-    /** 启动屏继续使用品牌黑；运行期间状态栏透明，底色由当前主题页面承接。 */
+    /** 深色外观承接色；启动屏背景由 splashBackground 资源独立保持品牌黑。 */
     private static final int BG_DARK = Color.parseColor("#121826");
     private static final int BG_LIGHT = Color.parseColor("#F6F7F9");
     private static final String PREFS = "zp_shell";
