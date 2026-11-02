@@ -31,6 +31,7 @@ const STYLES = path.join(REPO, "android/app/src/main/res/values/styles.xml");
 const MAIN = path.join(REPO, "android/app/src/main/java/com/tianbops/zhipei/MainActivity.java");
 const COLORS = path.join(REPO, "android/app/src/main/res/values/colors.xml");
 const NIGHT_COLORS = path.join(REPO, "android/app/src/main/res/values-night/colors.xml");
+const SPLASH_BADGE = path.join(REPO, "android/app/src/main/res/drawable/splash_badge.xml");
 const LAUNCH_THEME = "AppTheme.NoActionBarLaunch";
 
 const errors = [];
@@ -48,6 +49,7 @@ const styles = read(STYLES);
 const main = read(MAIN);
 const colors = read(COLORS);
 const nightColors = read(NIGHT_COLORS);
+const splashBadge = read(SPLASH_BADGE);
 
 /* ---------- 1. 启动主题继承 Theme.SplashScreen ---------- */
 const styleBlock = (() => {
@@ -84,6 +86,10 @@ if (!colors.includes('<color name="splashBackground">#05070A</color>') ||
 }
 if (!styleBlock.includes('name="windowSplashScreenBackground">@color/splashBackground</item>')) {
   errors.push("启动主题背景必须引用 splashBackground 品牌黑色资源");
+}
+if (!colors.includes('<color name="ic_launcher_background">#05070A</color>') ||
+    !splashBadge.includes("@drawable/ic_launcher_background")) {
+  errors.push("启动 logo 底盘必须使用与启动屏相同的品牌黑 #05070A");
 }
 
 /* ---------- 3. installSplashScreen 必须在 super.onCreate 之前 ---------- */
