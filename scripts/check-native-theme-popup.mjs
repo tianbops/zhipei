@@ -36,10 +36,14 @@ check(/configChanges="[^"]*uiMode/.test(manifest), "Activity 接收 uiMode 配�
 const applyStart = main.indexOf("private void applyChrome(");
 const applyEnd = main.indexOf("\n    private static int parseColor", applyStart);
 const applyBody = applyStart >= 0 ? main.slice(applyStart, applyEnd > applyStart ? applyEnd : undefined) : "";
-check(/color\s*=\s*BG_DARK/.test(applyBody) && /darkBg\s*=\s*true/.test(applyBody) && /AppCompatDelegate\.setDefaultNightMode\(AppCompatDelegate\.MODE_NIGHT_YES\)/.test(applyBody),
-  "applyChrome 强制原生界面使用深色与品牌黑底");
-check(/setAppearanceLightStatusBars\(false\)/.test(applyBody) && /setAppearanceLightNavigationBars\(false\)/.test(applyBody),
-  "黑色状态栏与导航栏固定使用浅色图标");
+check(/setStatusBarColor\(Color\.TRANSPARENT\)/.test(applyBody),
+  "运行期间 Android 状态栏背景保持透明");
+check(/setAppearanceLightStatusBars\(!darkBg\)/.test(applyBody) && /setAppearanceLightNavigationBars\(!darkBg\)/.test(applyBody),
+  "状态栏与导航栏图标明暗跟随当前主题");
+check(/AppCompatDelegate\.setDefaultNightMode\(darkBg\s*\?\s*AppCompatDelegate\.MODE_NIGHT_YES\s*:\s*AppCompatDelegate\.MODE_NIGHT_NO\)/.test(applyBody),
+  "原生 DayNight 外观跟随网页主题");
+check(/getSharedPreferences\(PREFS/.test(applyBody) && /initialChromeDark\(\)/.test(main),
+  "冷启动恢复上次主题，首次启动跟随系统外观");
 check(/public void applyTheme\(String colorHex, boolean darkBg\)/.test(main) && /runOnUiThread\(\(\) -> applyChrome\(color, darkBg\)\)/.test(main),
   "applyTheme 原生桥存在且在 UI 线程更新主题");
 check(/splashBackground/.test(colors) && /#05070A/i.test(colors) && /#05070A/i.test(nightColors),
