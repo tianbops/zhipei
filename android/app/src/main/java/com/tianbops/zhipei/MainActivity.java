@@ -4,6 +4,7 @@ import android.app.DownloadManager;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Color;
@@ -561,6 +562,42 @@ public class MainActivity extends BridgeActivity {
             }
             // JS 接口跑在 JavaBridge 线程，DownloadManager 操作切回主线程。
             runOnUiThread(() -> startDownload(url, null, null, null));
+        }
+
+        /**
+         * 供网页调用：window.ZhipeiNative.shareText(title, text)。
+         * 统一通过 Android 系统 Sharesheet 分享纯文本；网页只负责生成内容，
+         * 原生壳负责调起系统面板。用户取消属于系统正常行为，不显示错误。
+         * 若系统无法启动分享面板，则把同一份文本复制到剪贴板作为兜底。
+         */
+        @JavascriptInterface
+        public void shareText(String title, String text) {
+            final String safeTitle = title == null || title.trim().isEmpty()
+                    ? "智配One"
+                    : title.trim();
+            final String safeText = text == null ? "" : text.trim();
+            if (safeText.isEmpty()) {
+                return;
+            }
+            runOnUiThread(() -> {
+                try {
+                    Intent sendIntent = new Intent(Intent.ACTION_SEND);
+                    sendIntent.setType("text/plain");
+                    sendIntent.putExtra(Intent.EXTRA_SUBJECT, safeTitle);
+                    sendIntent.putExtra(Intent.EXTRA_TEXT, safeText);
+                    Intent chooser = Intent.createChooser(sendIntent, safeTitle);
+                    startActivity(chooser);
+                } catch (Exception e) {
+                    try {
+                        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                        if (cm != null) {
+                            cm.setPrimaryClip(ClipData.newPlainText(safeTitle, safeText));
+                            Toast.makeText(MainActivity.this, "分享面板暂不可用，内容已复制", Toast.LENGTH_SHORT).show();
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+            });
         }
 
         /**
