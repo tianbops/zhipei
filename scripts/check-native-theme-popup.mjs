@@ -55,6 +55,11 @@ check(applyBody.includes("c.setAppearanceLightStatusBars(!darkBg)")
 check(applyBody.includes("if (AppCompatDelegate.getDefaultNightMode() != desiredNightMode)")
   && applyBody.includes("AppCompatDelegate.setDefaultNightMode(desiredNightMode)"),
   "原生 DayNight 外观仅在主题实际变化时更新，避免重复重配置");
+const modeSwitchAt = applyBody.indexOf("AppCompatDelegate.setDefaultNightMode(desiredNightMode)");
+check(modeSwitchAt > 0
+  && applyBody.indexOf("webViewRef.setBackgroundColor(color)") < modeSwitchAt
+  && applyBody.indexOf("getWindow().getDecorView().setBackgroundColor(color)") < modeSwitchAt,
+  "先更新状态栏透明区域底色，再执行 DayNight 重配置，避免旧主题底板闪现");
 const onCreateStart = main.indexOf("public void onCreate(Bundle savedInstanceState)");
 const onCreateEnd = main.indexOf("private void configureTransparentStatusBar()", onCreateStart);
 const onCreateBody = onCreateStart >= 0 ? main.slice(onCreateStart, onCreateEnd > onCreateStart ? onCreateEnd : undefined) : "";
