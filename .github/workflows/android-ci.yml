@@ -67,6 +67,11 @@ jobs:
       - name: Check native popup theme synchronization
         # Web 深浅主题独立于系统外观，WebView 原生选择/日期弹层必须同步宿主 AppCompat uiMode。
         run: npm run check:theme
+      - name: Check status-bar recolor timing
+        # 真机逐帧实测：网页换色后 WebView 要 1 帧才合成上屏，而原生立即换色会在屏幕上
+        # 留下「状态栏先变、页面后变」的错色带。applyTheme 必须 postOnAnimation 对齐，
+        # 并保留 WebView 未挂载时的立即执行兜底。
+        run: npm run check:statusbar
       - name: Sync Capacitor
         run: npx cap sync android
       - name: Ensure Gradle wrapper is executable

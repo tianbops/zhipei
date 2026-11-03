@@ -11,6 +11,7 @@ on:
       - 'package-lock.json'
       - 'scripts/check-bridge-contract.mjs'
       - 'scripts/check-template-drift.mjs'
+      - 'scripts/check-statusbar-sync.mjs'
       - '.github/workflows/android-debug-apk.yml'
 
 permissions:

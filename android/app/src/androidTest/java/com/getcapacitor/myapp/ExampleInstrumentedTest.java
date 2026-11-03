@@ -74,6 +74,40 @@ public class ExampleInstrumentedTest {
         Log.i(TAG, "All theme transitions completed without Activity recreation");
     }
 
+    /**
+     * 走桥方法的换色路径：applyTheme 把换色排到下一动画帧，必须确认它最终真的落到窗口上。
+     * 若哪天 postOnAnimation 的回调丢失（WebView 未 attach、帧回调被吞），窗口会一直停在旧色，
+     * 而 applyChrome 的单测依然全绿——所以这条必须独立存在。
+     */
+    @Test(timeout = 60_000)
+    public void themeAppliedThroughBridgeEventuallyReachesWindowChrome() throws Exception {
+        final int light = Color.parseColor("#F6F7F9");
+        final int dark = Color.parseColor("#121826");
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            // 先压到浅色，确保后续断言不是"本来就是深色"蒙对。
+            scenario.onActivity(activity -> invokeApplyChrome(activity, light, false));
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+            scenario.onActivity(activity ->
+                    assertEquals("前置状态必须是浅色", light, decorBackgroundColor(activity)));
+
+            scenario.onActivity(activity -> invokeBridgeApplyTheme(activity, "#121826", true));
+
+            // postOnAnimation 排在下一帧；waitForIdleSync 只等消息队列，再补一帧余量。
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+            Thread.sleep(120);
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+
+            scenario.onActivity(activity -> assertWindowChrome(activity, dark, true));
+        }
+    }
+
+    private static int decorBackgroundColor(MainActivity activity) {
+        android.graphics.drawable.Drawable background =
+                activity.getWindow().getDecorView().getBackground();
+        assertTrue("DecorView must have a solid background", background instanceof ColorDrawable);
+        return ((ColorDrawable) background).getColor();
+    }
+
     private static void invokeApplyChrome(MainActivity activity, int color, boolean dark) {
         try {
             Method method = MainActivity.class.getDeclaredMethod("applyChrome", int.class, boolean.class);
@@ -81,6 +115,29 @@ public class ExampleInstrumentedTest {
             method.invoke(activity, color, dark);
         } catch (ReflectiveOperationException error) {
             throw new AssertionError("Unable to invoke the native theme transition", error);
+        }
+    }
+
+    /**
+     * 网页切换外观时真正走的是 NativeChrome.applyTheme → postOnAnimation → applyChrome。
+     *
+     * 为什么必须单测这一条：applyTheme 把换色排到下一个动画帧，与 WebView 的合成对齐
+     * （真机实测原来差 1 帧，状态栏先于页面变色）。这类"延后执行"最怕的是延后到
+     * 永远不执行——此时状态栏会一直停在旧色，而 applyChrome 本身的单测仍然全绿。
+     * 这里从桥方法进去、等一帧、再验窗口颜色，才能钉住这条路径。
+     */
+    private static void invokeBridgeApplyTheme(MainActivity activity, String hex, boolean dark) {
+        try {
+            Class<?> chromeClass = Class.forName("com.tianbops.zhipei.MainActivity$NativeChrome");
+            java.lang.reflect.Constructor<?> ctor =
+                    chromeClass.getDeclaredConstructor(MainActivity.class);
+            ctor.setAccessible(true);
+            Object chrome = ctor.newInstance(activity);
+            Method method = chromeClass.getDeclaredMethod("applyTheme", String.class, boolean.class);
+            method.setAccessible(true);
+            method.invoke(chrome, hex, dark);
+        } catch (ReflectiveOperationException error) {
+            throw new AssertionError("Unable to invoke the bridge theme transition", error);
         }
     }
 

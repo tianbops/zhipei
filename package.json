@@ -15,6 +15,7 @@
     "android:release": "cd android && ./gradlew assembleRelease --no-daemon",
     "android:aab": "cd android && ./gradlew bundleRelease --no-daemon",
     "check:theme": "node scripts/check-native-theme-popup.mjs",
+    "check:statusbar": "node scripts/check-statusbar-sync.mjs",
     "check:version": "node scripts/check-version.mjs"
   },
   "devDependencies": {
