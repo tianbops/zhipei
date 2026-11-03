@@ -1,6 +1,7 @@
 package com.getcapacitor.myapp;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import android.content.Context;
@@ -8,6 +9,7 @@ import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.util.Log;
 
+import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -19,6 +21,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.lang.reflect.Method;
+import java.util.concurrent.atomic.AtomicReference;
 
 /** 原生宿主与状态栏主题切换的真实模拟器仪器测试。 */
 @RunWith(AndroidJUnit4.class)
@@ -32,10 +35,15 @@ public class ExampleInstrumentedTest {
     }
 
     @Test(timeout = 120_000)
-    public void statusBarRemainsTransparentAndThemeAwareAcrossRepeatedSwitches() {
+    public void statusBarRemainsStableWithoutRecreatingActivityAcrossThemeSwitches() {
         Log.i(TAG, "Starting MainActivity scenario");
+        final int originalNightMode = AppCompatDelegate.getDefaultNightMode();
+        final AtomicReference<MainActivity> originalActivity = new AtomicReference<>();
+
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            Log.i(TAG, "MainActivity scenario launched");
+            scenario.onActivity(originalActivity::set);
+            Log.i(TAG, "MainActivity scenario launched; defaultNightMode=" + originalNightMode);
+
             int light = Color.parseColor("#F6F7F9");
             int dark = Color.parseColor("#121826");
             int[] colors = {dark, light, dark, light, dark, light, dark, light};
@@ -46,13 +54,24 @@ public class ExampleInstrumentedTest {
                 final boolean expectedDark = darkModes[i];
                 Log.i(TAG, "Starting theme transition " + (i + 1) + ", dark=" + expectedDark);
                 scenario.onActivity(activity -> {
+                    assertSame("Theme changes must not replace MainActivity",
+                            originalActivity.get(), activity);
                     invokeApplyChrome(activity, expectedColor, expectedDark);
+                });
+
+                // Drain posted configuration/recreation work before inspecting the next frame.
+                InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+                scenario.onActivity(activity -> {
+                    assertSame("Theme changes must not recreate MainActivity",
+                            originalActivity.get(), activity);
                     assertWindowChrome(activity, expectedColor, expectedDark);
                 });
-                Log.i(TAG, "Completed theme transition " + (i + 1));
+                assertEquals("Web appearance must not change the process AppCompat night mode",
+                        originalNightMode, AppCompatDelegate.getDefaultNightMode());
+                Log.i(TAG, "Completed stable theme transition " + (i + 1));
             }
         }
-        Log.i(TAG, "All theme transitions completed");
+        Log.i(TAG, "All theme transitions completed without Activity recreation");
     }
 
     private static void invokeApplyChrome(MainActivity activity, int color, boolean dark) {

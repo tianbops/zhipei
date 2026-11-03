@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * 原生弹层主题与状态栏透明度契约。
- * Web 外观独立于系统外观；原生弹层需同步 AppCompat uiMode，
- * 状态栏则必须在日/夜主题资源中始终透明，切换时只更新图标明暗。
+ * 原生宿主固定主题与状态栏透明度契约。
+ * Web 外观独立于系统外观；切换时不得触发 AppCompat DayNight 重配置，
+ * 状态栏保持透明，只更新窗口底色与系统栏图标明暗。
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -33,8 +33,12 @@ check(colors === templateColors && nightColors === templateNightColors, "日间/
 check(styles.includes('<item name="android:statusBarColor">@android:color/transparent</item>'), "日间主题声明透明状态栏");
 check(styles.includes('<item name="android:windowLightStatusBar">true</item>'), "日间主题默认使用深色状态栏图标");
 check(nightStyles.includes('<item name="android:statusBarColor">@android:color/transparent</item>'), "夜间主题声明透明状态栏");
-check(nightStyles.includes('<item name="android:windowLightStatusBar">false</item>'), "夜间主题默认使用浅色状态栏图标");
-check(styles.includes("Theme.AppCompat.DayNight.NoActionBar"), "宿主主题使用 AppCompat DayNight");
+check(nightStyles.includes('<item name="android:windowLightStatusBar">true</item>'), "夜间系统配置仍使用稳定的固定主题默认图标，运行时再由网页主题覆盖");
+check(styles.includes("Theme.AppCompat.Light.NoActionBar")
+  && nightStyles.includes("Theme.AppCompat.Light.NoActionBar")
+  && !styles.includes("Theme.AppCompat.DayNight")
+  && !nightStyles.includes("Theme.AppCompat.DayNight"),
+  "日间/夜间资源均使用固定原生主题，不跟随系统 DayNight 重配置");
 check(/configChanges="[^"]*uiMode/.test(manifest), "Activity 接收 uiMode 配置变化，不因主题同步重建页面");
 
 const applyStart = main.indexOf("private void applyChrome(");
@@ -52,20 +56,18 @@ check(!applyBody.includes("setStatusBarColor(") && !applyBody.includes("setStatu
 check(applyBody.includes("c.setAppearanceLightStatusBars(!darkBg)")
   && applyBody.includes("c.setAppearanceLightNavigationBars(!darkBg)"),
   "状态栏与导航栏图标明暗跟随当前主题");
-check(applyBody.includes("if (AppCompatDelegate.getDefaultNightMode() != desiredNightMode)")
-  && applyBody.includes("AppCompatDelegate.setDefaultNightMode(desiredNightMode)"),
-  "原生 DayNight 外观仅在主题实际变化时更新，避免重复重配置");
-const modeSwitchAt = applyBody.indexOf("AppCompatDelegate.setDefaultNightMode(desiredNightMode)");
-check(modeSwitchAt > 0
-  && applyBody.indexOf("webViewRef.setBackgroundColor(color)") < modeSwitchAt
-  && applyBody.indexOf("getWindow().getDecorView().setBackgroundColor(color)") < modeSwitchAt,
-  "先更新状态栏透明区域底色，再执行 DayNight 重配置，避免旧主题底板闪现");
+check(!main.includes("AppCompatDelegate") && !main.includes("setDefaultNightMode("),
+  "网页深浅外观切换不调用 AppCompat DayNight API，不触发原生主题重配置");
+check(applyBody.includes("webViewRef.setBackgroundColor(color)")
+  && applyBody.includes("getWindow().getDecorView().setBackgroundColor(color)")
+  && applyBody.includes("c.setAppearanceLightStatusBars(!darkBg)")
+  && applyBody.includes("c.setAppearanceLightNavigationBars(!darkBg)"),
+  "主题切换只更新窗口承接色与系统栏图标明暗，不更换 Activity 主题");
 const onCreateStart = main.indexOf("public void onCreate(Bundle savedInstanceState)");
 const onCreateEnd = main.indexOf("private void configureTransparentStatusBar()", onCreateStart);
 const onCreateBody = onCreateStart >= 0 ? main.slice(onCreateStart, onCreateEnd > onCreateStart ? onCreateEnd : undefined) : "";
-check(onCreateBody.includes("initialChromeDark()")
-  && onCreateBody.indexOf("setDefaultNightMode") < onCreateBody.indexOf("super.onCreate(savedInstanceState)"),
-  "Activity 首帧前恢复 DayNight 模式，避免先绘制默认主题");
+check(!onCreateBody.includes("setDefaultNightMode") && onCreateBody.includes("super.onCreate(savedInstanceState)"),
+  "Activity 创建阶段不切换 AppCompat DayNight 模式");
 check(/getSharedPreferences\(PREFS/.test(applyBody) && main.includes("initialChromeDark()"),
   "冷启动恢复上次主题，首次启动跟随系统外观");
 check(/public void applyTheme\(String colorHex, boolean darkBg\)/.test(main)
