@@ -26,7 +26,6 @@ import android.webkit.WebView;
 import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
-import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.graphics.Insets;
 import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.ViewCompat;
@@ -85,13 +84,7 @@ public class MainActivity extends BridgeActivity {
         // 必须在 super.onCreate() 之前：installSplashScreen 会在此刻把主题从
         // AppTheme.NoActionBarLaunch 换成 postSplashScreenTheme（AppTheme.NoActionBar）。
         // 放到 super 之后会因为 Activity 已按启动主题完成初始化而失效。
-        // 在 Activity 首帧创建前确定 DayNight 模式，避免先按系统默认主题绘制再切换。
-        int launchNightMode = initialChromeDark()
-                ? AppCompatDelegate.MODE_NIGHT_YES
-                : AppCompatDelegate.MODE_NIGHT_NO;
-        if (AppCompatDelegate.getDefaultNightMode() != launchNightMode) {
-            AppCompatDelegate.setDefaultNightMode(launchNightMode);
-        }
+        // 原生宿主保持固定主题；网页深浅外观只同步窗口与系统栏，不触发 DayNight 重配置。
         installLaunchScreen();
         super.onCreate(savedInstanceState);
         configureTransparentStatusBar();
@@ -372,14 +365,8 @@ public class MainActivity extends BridgeActivity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             getWindow().setNavigationBarContrastEnforced(false);
         }
-        int desiredNightMode = darkBg
-                ? AppCompatDelegate.MODE_NIGHT_YES
-                : AppCompatDelegate.MODE_NIGHT_NO;
-        // 同一主题不重复触发 AppCompat DayNight 全局重配置。
-        if (AppCompatDelegate.getDefaultNightMode() != desiredNightMode) {
-            AppCompatDelegate.setDefaultNightMode(desiredNightMode);
-        }
-        // 状态栏背景在主题资源与 onCreate 中一次性固定透明；切换期间不再写它。
+        // 原生 Activity 不切换 DayNight 模式，避免 AppCompat 触发资源重配置/窗口重建。
+        // 状态栏背景在主题资源与 onCreate 中一次性固定透明；切换期间只同步图标明暗。
         WindowInsetsControllerCompat c =
                 new WindowInsetsControllerCompat(getWindow(), getWindow().getDecorView());
         // true = 浅色背景配深色系统图标；false = 深色背景配浅色系统图标。
