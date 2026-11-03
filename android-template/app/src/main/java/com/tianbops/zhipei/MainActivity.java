@@ -103,7 +103,15 @@ public class MainActivity extends BridgeActivity {
         getWindow().setStatusBarColor(Color.TRANSPARENT);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             getWindow().setStatusBarContrastEnforced(false);
+            getWindow().setNavigationBarContrastEnforced(false);
         }
+        // 在首帧前就按上次网页外观设置图标明暗，避免深色窗口先显示深色图标。
+        boolean dark = initialChromeDark();
+        WindowInsetsControllerCompat controller =
+                new WindowInsetsControllerCompat(getWindow(), getWindow().getDecorView());
+        controller.setAppearanceLightStatusBars(!dark);
+        controller.setAppearanceLightNavigationBars(!dark);
+        getWindow().setNavigationBarColor(initialChromeColor());
     }
 
     /**
