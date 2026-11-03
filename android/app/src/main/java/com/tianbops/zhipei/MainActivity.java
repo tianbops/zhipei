@@ -439,20 +439,32 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void applyTheme(String colorHex, boolean darkBg) {
             int color = parseColor(colorHex, chromeColor);
-            /* 与 WebView 的下一帧合成对齐，而不是立即换色。
+            /* 与 WebView 的合成帧对齐，而不是立即换色。
              *
-             * 真机实测（30fps 逐帧取状态栏与页面众数色，5 次切换中 4 次命中）：
-             * 网页改完 data-zp-theme 之后，WebView 还要 1 帧才把新色合成上屏；而
-             * DecorView.setBackgroundColor 是立即 invalidate、下一个 vsync 就画出来。
-             * 两边差 1 帧（约 33ms），屏幕上就是「状态栏已换色、页面还是旧色」的一条
-             * 错色带 —— 浅切深时像顶部闪一道白，深切浅时像闪一道黑。
+             * 现象（用户录屏逐帧量，取状态栏与页面众数色）：切换外观时总有一条
+             * 「状态栏已换色、页面还是旧色」的错色带，浅切深像顶部闪一道白，
+             * 深切浅像闪一道黑。v1.0.30 的 postOnAnimation 单跳没修掉——实测间隔
+             * 仍是 16ms 左右，因为**单跳落在同一帧里**：
              *
-             * postOnAnimation 把换色排到下一个动画帧执行，与 WebView 提交同一拍。
-             * 只有用户主动切换走这条路径；启动时的初始染色仍立即执行，不能延后。
+             *   postOnAnimation 的回调排在 Choreographer 的 ANIMATION 阶段，
+             *   之后同一帧的 TRAVERSAL 就会把 DecorView 重绘出去 ——
+             *   等价于「立即执行」，净延迟为 0。帧 1 的动画回调里再 postOnAnimation
+             *   一次，才会登记到**下一帧**，净延迟正好 1 个显示帧。
+             *
+             * 而网页侧要晚：改完 data-zp-theme 要先样式/绘制，再经渲染进程提交、
+             * 合成器上屏，比原生多出 1 个显示帧。所以这里延迟 1 帧、退 2 跳。
+             * 用「显示帧」而不是毫秒计数——管线延迟按帧算，120Hz 上 1 帧是 8ms，
+             * 写死 16ms 会在高刷屏上过冲、在 60Hz 上不足。
+             *
+             * 只有用户主动切换走这条路径；启动时的初始染色仍立即执行，不能延后
+             * （否则启动交接会多空一帧）。
+             *
+             * 若某机型仍残留 1 帧（表现为反向：页面先变、状态栏后变），把跳数改成 1；
+             * 若仍早，改 3。护栏 scripts/check-statusbar-sync.mjs 钉的是「必须是两跳」。
              */
             WebView wv = webViewRef;
             if (wv != null && wv.isAttachedToWindow()) {
-                wv.postOnAnimation(() -> applyChrome(color, darkBg));
+                wv.postOnAnimation(() -> wv.postOnAnimation(() -> applyChrome(color, darkBg)));
                 return;
             }
             // WebView 尚未挂载（或已分离）：没有合成帧可对齐，退回立即执行。
