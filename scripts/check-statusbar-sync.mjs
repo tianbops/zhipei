@@ -1,22 +1,27 @@
 #!/usr/bin/env node
 /**
- * 状态栏换色时序护栏。
+ * 状态栏换色护栏（结构 + 时序）。
  *
- * 为什么需要它：网页切换深浅外观时，原生侧必须把「状态栏/窗口底色」的更换排到
- * WebView 后面那一帧，而不是立即执行。真机逐帧实测（状态栏与页面各取众数色）：
- * 网页改完 data-zp-theme 后 WebView 还要 1 帧才把新色合成上屏，而 DecorView
- * setBackgroundColor 是立即 invalidate、当帧就画出来 —— 两边差 1 帧，屏幕上
- * 就是「状态栏已换色、页面还是旧色」的一条错色带（浅切深像顶部闪一道白）。
+ * ## 结构（2026-11-04 起，最重要的一条）
+ * 状态栏那块像素**只能有一个绘制者**。历史上 WebView 用上外边距让位，露出的是
+ * DecorView 原生底色，于是页面与原生各画一半：原生换色下一个 vsync 就上屏，
+ * 页面还要多一帧合成，屏幕上就永远有一条错色带。
  *
- * 关键细节：**单次 postOnAnimation 等于没延迟**。它的回调排在 Choreographer 的
- * ANIMATION 阶段，同一帧随后的 TRAVERSAL 就会重绘 —— v1.0.30 只写了一跳，
- * 用户装上去错色带照旧（实测间隔还是 16ms）。必须嵌套两次才会登记到下一帧。
+ * 三次尝试都在调「原生延后多久」（立即 → 1 跳 → 2 跳），每次只差一拍，说明方向错了：
+ * 不是谁画得早晚，而是**本来就不该有两个绘制者**。
  *
- * 这类退化不会报错、不会崩溃，`applyChrome` 的单测也依然全绿：
- *   - 改回 runOnUiThread 立即执行 → 错色带回来；
- *   - 只写一跳 postOnAnimation → 同上，且看起来「已经修了」；
- *   - 去掉 isAttachedToWindow 兜底 → WebView 未挂载时状态栏永远不更新。
- * 所以把这几条约束固化成断言。
+ * 现在的结构（Android 15 起 Chrome / Gmail / Telegram 一致）：WebView 铺满全屏，
+ * 状态栏区域由页面画固定色带，原生只负责图标明暗。这一层如果被改回去
+ * （顶部重新让位），错色带会立刻复现，而且**不报错、不崩溃、单测全绿**：
+ *   - `applyInsetsMargins(webView, 0, ...)` 的 0 被改回 topBars.top → 两层结构回归；
+ *   - 删掉 `statusBarInset()` → 页面拿不到高度，色带塌成 0，页面顶到状态栏图标下；
+ *   - `statusBarInsetPx` 去掉 volatile → JS 桥线程可能读到旧值。
+ *
+ * ## 时序（保留自 v1.0.31）
+ * 原生底色/图标仍要排到 WebView 后面那一帧。**单次 postOnAnimation 等于没延迟**：
+ * 它的回调排在 Choreographer 的 ANIMATION 阶段，同帧随后的 TRAVERSAL 就重绘。
+ * v1.0.30 只写一跳，用户装上后错色带照旧（实测间隔仍 16ms）。必须嵌套两次。
+ * 结构改对之后这条只影响细线图标与兜底底色，不再是整条色带。
  *
  * 用法：node scripts/check-statusbar-sync.mjs
  * 退出码：0 通过；1 有破坏。
@@ -68,7 +73,37 @@ for (const rel of SOURCES) {
     errors.push(`无法读取 ${rel}（${e.code || e.message}）`);
     continue;
   }
+  const code = stripComments(src);
 
+  // ---- 结构：顶部不得让位 ----
+  if (!/applyInsetsMargins\(\s*webView\s*,\s*0\s*,/.test(code)) {
+    errors.push(
+      `${rel}: 顶部 inset 必须归零（applyInsetsMargins(webView, 0, ...)）。` +
+      `让位后状态栏区域露出 DecorView 原生底色，与 WebView 形成两个绘制者，错色带必然回归`
+    );
+  }
+
+  // ---- 结构：状态栏高度必须能传给网页 ----
+  const insetRaw = methodBody(src, "public int statusBarInset(");
+  if (!insetRaw) {
+    errors.push(
+      `${rel}: 找不到 NativeChrome.statusBarInset()。网页靠它既做能力协商、又取色带高度；` +
+      `缺失会让页面退回旧布局（或色带塌成 0，内容被状态栏图标压住）`
+    );
+  } else {
+    const before = src.slice(0, src.indexOf("public int statusBarInset("));
+    if (!/@JavascriptInterface\s*$/.test(before.trimEnd())) {
+      errors.push(`${rel}: statusBarInset() 缺少 @JavascriptInterface，网页读不到（会静默返回 undefined）`);
+    }
+    if (!stripComments(insetRaw).includes("statusBarInsetPx")) {
+      errors.push(`${rel}: statusBarInset() 必须返回 statusBarInsetPx（不要另算一份，避免与 inset 监听不同源）`);
+    }
+  }
+  if (!/private\s+volatile\s+int\s+statusBarInsetPx/.test(code)) {
+    errors.push(`${rel}: statusBarInsetPx 必须是 volatile —— JS 桥线程读、UI 线程写`);
+  }
+
+  // ---- 时序：applyTheme 两跳 ----
   const applyThemeRaw = methodBody(src, "public void applyTheme(");
   if (!applyThemeRaw) {
     errors.push(`${rel}: 找不到 NativeChrome.applyTheme(String, boolean)`);
@@ -79,16 +114,14 @@ for (const rel of SOURCES) {
   if (!applyTheme.includes("postOnAnimation")) {
     errors.push(
       `${rel}: applyTheme 必须用 postOnAnimation 把换色排到后面的合成帧；` +
-      `直接 runOnUiThread 会让状态栏比页面早 1 帧变色`
+      `直接 runOnUiThread 会让原生比页面早 1 帧变色`
     );
   }
-  // 必须是**两跳**：Choreographer 的 ANIMATION 阶段之后同帧就 TRAVERSAL，
-  // 单跳等于立即执行（v1.0.30 实测只有单跳，错色带仍然在，间隔还是 16ms）。
   const hops = (applyTheme.match(/postOnAnimation/g) || []).length;
   if (applyTheme.includes("postOnAnimation") && hops < 2) {
     errors.push(
       `${rel}: applyTheme 的 postOnAnimation 必须嵌套两次（当前 ${hops} 次）。` +
-      `单跳的回调与绘制在同一帧，净延迟为 0，状态栏仍会比页面早 1 帧`
+      `单跳的回调与绘制在同一帧，净延迟为 0`
     );
   }
   if (!applyTheme.includes("isAttachedToWindow")) {
@@ -103,13 +136,11 @@ for (const rel of SOURCES) {
   if (!applyTheme.includes("parseColor")) {
     errors.push(`${rel}: applyTheme 必须经 parseColor 校验色值，非法入参不得直接进染色通道`);
   }
-
-  // 兜底分支必须存在且可达：applyTheme 内应当同时出现 postOnAnimation 与 runOnUiThread。
   if (applyTheme.includes("postOnAnimation") && !applyTheme.includes("runOnUiThread")) {
     errors.push(`${rel}: applyTheme 缺少 runOnUiThread 兜底分支（WebView 未挂载时会静默不换色）`);
   }
 
-  // applyChrome 必须同时改「窗口背景 / WebView 背景 / 状态栏图标 / 导航栏」四件，缺一件都会露出旧色。
+  // ---- applyChrome 必须四件套齐全 ----
   const applyChromeRaw = methodBody(src, "private void applyChrome(");
   if (!applyChromeRaw) {
     errors.push(`${rel}: 找不到 applyChrome(int, boolean)`);
@@ -128,8 +159,8 @@ for (const rel of SOURCES) {
 }
 
 if (errors.length) {
-  console.error("✗ 状态栏换色时序护栏未通过：");
+  console.error("✗ 状态栏护栏未通过：");
   for (const e of errors) console.error("  - " + e);
   process.exit(1);
 }
-console.log("✓ 状态栏换色时序护栏通过（两跳 postOnAnimation + 未挂载兜底 + 四件套染色）");
+console.log("✓ 状态栏护栏通过（单绘制者结构：顶部不让位 + statusBarInset 能力协商 + 两跳时序 + 四件套染色）");
