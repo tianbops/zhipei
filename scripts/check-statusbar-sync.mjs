@@ -3,15 +3,20 @@
  * 状态栏换色时序护栏。
  *
  * 为什么需要它：网页切换深浅外观时，原生侧必须把「状态栏/窗口底色」的更换排到
- * WebView 的下一个合成帧，而不是立即执行。真机逐帧实测（30fps，5 次切换中 4 次）：
+ * WebView 后面那一帧，而不是立即执行。真机逐帧实测（状态栏与页面各取众数色）：
  * 网页改完 data-zp-theme 后 WebView 还要 1 帧才把新色合成上屏，而 DecorView
- * setBackgroundColor 是立即 invalidate、下一个 vsync 就画出来 —— 两边差 1 帧，
- * 屏幕上就是「状态栏已换色、页面还是旧色」的一条错色带（浅切深时像顶部闪一道白）。
+ * setBackgroundColor 是立即 invalidate、当帧就画出来 —— 两边差 1 帧，屏幕上
+ * 就是「状态栏已换色、页面还是旧色」的一条错色带（浅切深像顶部闪一道白）。
+ *
+ * 关键细节：**单次 postOnAnimation 等于没延迟**。它的回调排在 Choreographer 的
+ * ANIMATION 阶段，同一帧随后的 TRAVERSAL 就会重绘 —— v1.0.30 只写了一跳，
+ * 用户装上去错色带照旧（实测间隔还是 16ms）。必须嵌套两次才会登记到下一帧。
  *
  * 这类退化不会报错、不会崩溃，`applyChrome` 的单测也依然全绿：
  *   - 改回 runOnUiThread 立即执行 → 错色带回来；
- *   - 只加 postOnAnimation 却去掉兜底 → WebView 未挂载时状态栏永远不更新。
- * 所以把这三条约束固化成断言。
+ *   - 只写一跳 postOnAnimation → 同上，且看起来「已经修了」；
+ *   - 去掉 isAttachedToWindow 兜底 → WebView 未挂载时状态栏永远不更新。
+ * 所以把这几条约束固化成断言。
  *
  * 用法：node scripts/check-statusbar-sync.mjs
  * 退出码：0 通过；1 有破坏。
@@ -73,8 +78,17 @@ for (const rel of SOURCES) {
 
   if (!applyTheme.includes("postOnAnimation")) {
     errors.push(
-      `${rel}: applyTheme 必须用 postOnAnimation 把换色排到下一合成帧；` +
+      `${rel}: applyTheme 必须用 postOnAnimation 把换色排到后面的合成帧；` +
       `直接 runOnUiThread 会让状态栏比页面早 1 帧变色`
+    );
+  }
+  // 必须是**两跳**：Choreographer 的 ANIMATION 阶段之后同帧就 TRAVERSAL，
+  // 单跳等于立即执行（v1.0.30 实测只有单跳，错色带仍然在，间隔还是 16ms）。
+  const hops = (applyTheme.match(/postOnAnimation/g) || []).length;
+  if (applyTheme.includes("postOnAnimation") && hops < 2) {
+    errors.push(
+      `${rel}: applyTheme 的 postOnAnimation 必须嵌套两次（当前 ${hops} 次）。` +
+      `单跳的回调与绘制在同一帧，净延迟为 0，状态栏仍会比页面早 1 帧`
     );
   }
   if (!applyTheme.includes("isAttachedToWindow")) {
@@ -118,4 +132,4 @@ if (errors.length) {
   for (const e of errors) console.error("  - " + e);
   process.exit(1);
 }
-console.log("✓ 状态栏换色时序护栏通过（postOnAnimation 对齐 + 未挂载兜底 + 四件套染色）");
+console.log("✓ 状态栏换色时序护栏通过（两跳 postOnAnimation + 未挂载兜底 + 四件套染色）");
