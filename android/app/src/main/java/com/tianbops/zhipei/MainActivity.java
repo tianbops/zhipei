@@ -66,6 +66,8 @@ public class MainActivity extends BridgeActivity {
 
     /** 引用在 UI 线程赋值，applyTheme() 会在 JS 桥线程读它（决定走哪条染色路径）。 */
     private volatile WebView webViewRef;
+    /** 状态栏高度（px）。网页用它给顶部固定色带定高；首帧前由 status_bar_height 兜底。 */
+    private volatile int statusBarInsetPx = 0;
     /** 返回键接管回调（AndroidX OnBackPressedDispatcher）。 */
     private OnBackPressedCallback backCallback;
     private SplashScreen splashScreen;
@@ -301,36 +303,77 @@ public class MainActivity extends BridgeActivity {
 
     /**
      * targetSdk 35 起 Android 强制 edge-to-edge，App 内容会顶到状态栏/刘海/手势条下面。
-     * 监听挂在 DecorView 上（根视图，必定收到 inset 派发），把系统栏高度换算成
-     * WebView 的上下外边距，让所有页面内容都落在安全区内。
-     * 另外先用系统 status_bar_height 资源兜底，避免 insets 派发前首帧顶到状态栏。
+     *
+     * 历史：这里曾把状态栏高度换算成 WebView 的上外边距，让页面整体下移。
+     * 那种结构下「状态栏那块像素」有两个绘制者——DecorView（原生）和 WebView（页面），
+     * 换色时前者下一个 vsync 就上屏、后者还要多一帧合成，于是必然有一帧错色带。
+     * 三次调 postOnAnimation 的延后跳数都没修掉，因为方向错了：不是「谁画得早晚」，
+     * 而是「本来就不该有两个绘制者」。
+     *
+     * 现在改为成熟结构（Android 15 起 Chrome / Gmail / Telegram 一致）：
+     *   顶部不再让位，WebView 铺满到状态栏后面，状态栏那块由**页面**画背景色；
+     *   状态栏高度通过 statusBarInset() 告诉网页，网页用它撑一条固定色带。
+     * 同一块像素只有一个绘制者，与页面天然同帧，帧差消失。
+     *
+     * 底部仍保留让位：底部导航区由页面内的 tab bar 承接，本轮不改，避免牵动
+     * 各页 safe-area-bottom 的既有布局。
      */
     private void applySystemBarInsets(WebView webView) {
+        // 网络/insets 派发前先给网页一个可用高度，避免首帧色带高度为 0（页面会被状态栏图标压住）。
         int id = getResources().getIdentifier("status_bar_height", "dimen", "android");
         if (id > 0) {
             int h = getResources().getDimensionPixelSize(id);
-            if (h > 0) {
-                applyInsetsMargins(webView, h, 0);
+            if (h > 0 && statusBarInsetPx != h) {
+                statusBarInsetPx = h;
+                pushTopInsetToWeb(h, webView);
             }
         }
-        // Edge-to-Edge 已在 onCreate 首帧前启用；此处只接收 inset 并计算安全边距。
         final View decorView = getWindow().getDecorView();
         ViewCompat.setOnApplyWindowInsetsListener(decorView, (v, windowInsets) -> {
             Insets topBars = windowInsets.getInsets(
                     WindowInsetsCompat.Type.statusBars()
                             | WindowInsetsCompat.Type.displayCutout());
             Insets nav = windowInsets.getInsets(WindowInsetsCompat.Type.navigationBars());
-            applyInsetsMargins(webView, topBars.top, nav.bottom);
+            applyInsetsMargins(webView, 0, nav.bottom);
+            // 旋转 / 分屏 / 刘海变化时高度会变，同步给网页，色带才不会短一截。
+            if (topBars.top != statusBarInsetPx) {
+                statusBarInsetPx = topBars.top;
+                pushTopInsetToWeb(topBars.top, webView);
+            }
             return windowInsets;
         });
         webView.post(() -> ViewCompat.requestApplyInsets(decorView));
     }
 
     /**
-     * 用外边距让出系统栏区域。注意不能用 WebView 自身的 padding——
+     * 把状态栏高度送到网页的 --zp-e2e-top。页面自己也会在首帧前调 statusBarInset()
+     * 主动读一次，这里只是兜底（inset 迟于页面脚本、或运行中发生变化）。
+     * 页面尚未加载时 evaluateJavascript 会失败，忽略即可——那时网页还读不到变量。
+     */
+    private void pushTopInsetToWeb(int px, WebView webView) {
+        if (webView == null) return;
+        try {
+            webView.post(() -> {
+                try {
+                    webView.evaluateJavascript(
+                            "(function(){try{document.documentElement.style.setProperty('--zp-e2e-top','"
+                                    + px + "px')}catch(e){}})()",
+                            null);
+                } catch (Throwable ignored) {
+                    // 页面未就绪时无 JS 上下文，等下次 inset 变化或页面自读。
+                }
+            });
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * 用外边距让出系统栏区域（现在只用于底部）。注意不能用 WebView 自身的 padding——
      * android.webkit.WebView 的已知行为是内容渲染忽略自身 padding，
      * 设了也无效（这正是此前「顶部遮挡」长期未修好的根因）。
-     * 边距区露出的是窗口背景，由 applyChrome 统一设为主题色。
+     *
+     * 顶部自 2026-11-04 起不再让位：状态栏区域改由页面绘制固定色带（见
+     * applySystemBarInsets 注释）。底部仍让位，露出的是窗口背景，由 applyChrome 染色。
      */
     private void applyInsetsMargins(WebView webView, int top, int bottom) {
         ViewGroup.LayoutParams lp = webView.getLayoutParams();
@@ -416,6 +459,23 @@ public class MainActivity extends BridgeActivity {
 
     /** 供网页调用的原生通道：window.ZhipeiNative.* */
     private class NativeChrome {
+        /**
+         * 供网页调用：window.ZhipeiNative.statusBarInset()。
+         *
+         * 一次调用同时承担两件事：
+         *   ① 能力协商——**存在这个方法**即代表壳已把 WebView 铺满全屏（edge-to-edge），
+         *      状态栏区域由页面绘制；旧壳没有它，网页保持「让位 + 8px」的旧布局。
+         *      不用 env(safe-area-inset-top) 判断：Android WebView 的 env() 只反映
+         *      刘海 cutout，不含状态栏高度，普通机型返回 0，拿它当判据会禁用掉色带。
+         *   ② 给高度——色带要正好盖住状态栏，高了会吃掉内容，矮了会被图标压住。
+         *
+         * 返回 px（已含 density）。0 表示尚未拿到 inset（页面此时应回退到 env 兜底）。
+         */
+        @JavascriptInterface
+        public int statusBarInset() {
+            return statusBarInsetPx;
+        }
+
         /**
          * 供网页调用：window.ZhipeiNative.webReady()。
          *

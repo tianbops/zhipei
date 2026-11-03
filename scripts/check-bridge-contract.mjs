@@ -39,6 +39,11 @@ const CONTRACT = [
   { name: "appVersion", returns: "String", desc: "应用版本号" },
   { name: "appVersionCode", returns: "int", desc: "应用版本号（数字）" },
   { name: "applyTheme", returns: "void", desc: "同步原生弹层主题" },
+  {
+    name: "statusBarInset",
+    returns: "int",
+    desc: "状态栏高度 px；方法存在本身即 edge-to-edge 能力协商（网页据此让页面接管状态栏区域）",
+  },
   { name: "setFontScale", returns: "void", desc: "同步全局字号" },
   { name: "haptic", returns: "void", desc: "按钮触感（light/medium/success/warn）" },
   { name: "webReady", returns: "void", desc: "网页首帧就绪，撤下启动屏" },
@@ -69,8 +74,16 @@ const WEB_CALLERS = [
     method: "haptic",
   },
   {
+    // edge-to-edge 能力协商 + 色带高度：网页首帧前调 nat.statusBarInset()。
+    // 方法名对不上不会报错——网页会判定「旧壳」并退回让位布局，错色带随之复现，
+    // 属于最难查的那类静默降级。
+    file: "js/theme-sync.js",
+    pattern: /ZhipeiNative[\s\S]{0,120}?statusBarInset|\bstatusBarInset\s*\(/g,
+    method: "statusBarInset",
+  },
+  {
     // 启动屏握手：网页首帧画完调 nat.webReady()，原生据此撤下启动屏。
-    // 方法名对不上不会报错，只会让启动屏一直挂到 6 秒超时——必须纳入契约。
+    // 方法名对不上不会报错，只会让启动屏一直挂到 15 秒超时——必须纳入契约。
     file: "js/boot-ready.js",
     pattern: /ZhipeiNative[\s\S]{0,80}?webReady|\bwebReady\s*\(/g,
     method: "webReady",

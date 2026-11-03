@@ -13,7 +13,7 @@
 
 - `www/` 里**只有** `offline.html`——没有业务页面，没有业务 JS，没有 CSS。
 - 所有界面、逻辑、样式、会话，全部来自 Web 端仓库 `tianbops/zhipei-one`。
-- 本仓只做三件事：**加载远程页面** + **暴露 10 个原生桥方法** + **打包签名分发**。
+- 本仓只做三件事：**加载远程页面** + **暴露 11 个原生桥方法** + **打包签名分发**。
 - **没有本地数据层**：无 SharedPreferences / SQLite / Room / 文件缓存。
 
 因此：改界面不要在这里改（去 Web 仓）；这里的每一行代码都影响**所有**用户的启动与原生能力。
@@ -38,7 +38,7 @@
 | `www/` | 仅 `offline.html` | 不要往里放业务资源 |
 | `scripts/check-bridge-contract.mjs` | 桥接契约守卫 | **必跑** |
 | `scripts/check-template-drift.mjs` | 模板漂移守卫 | **必跑** |
-| `scripts/check-statusbar-sync.mjs` | 状态栏换色时序守卫 | **必跑** |
+| `scripts/check-statusbar-sync.mjs` | 状态栏结构与换色时序守卫（单绘制者 + 两跳） | **必跑** |
 | `assets-src/` | 图标源文件 | 改图标跑 `npm run android:icons` |
 
 **模板漂移的代价（历史事故）**：`android-template/` 与实际 `android/` 不一致时，
@@ -54,7 +54,7 @@ git checkout main
 npm ci
 npm run check:bridge          # 桥接契约（必须绿）
 npm run check:template-drift  # 模板漂移（必须绿）
-npm run check:statusbar       # 状态栏换色时序（必须绿）
+npm run check:statusbar       # 状态栏结构/时序（必须绿）
 npx cap sync android
 cd android && ./gradlew assembleDebug --no-daemon   # 构建验证
 
@@ -108,11 +108,12 @@ git push origin main
   WebView 里 back 只退回上一页，退不出应用。
 - 契约由 `npm run check:back`（`scripts/check-back-channel.mjs`）守，CI 在 assembleDebug 前执行。
 
-## 5. 10 个原生桥方法（删改即破坏网页端功能）
+## 5. 11 个原生桥方法（删改即破坏网页端功能）
 
 | 方法 | 签名 | 网页端用途 |
 |---|---|---|
-| `applyTheme` | `(String colorHex, boolean darkBg)` | 状态栏/导航栏跟随主题 |
+| `applyTheme` | `(String colorHex, boolean darkBg)` | 导航栏底色 + 两组图标明暗跟随主题 |
+| `statusBarInset` | `() int` | 状态栏高度 px。**方法存在本身**是 edge-to-edge 能力协商：网页据此让页面接管状态栏区域；旧壳没有它则退回「让位 + 8px」旧布局 |
 | `setFontScale` | `(float scale)` | 设置页字号调节 |
 | `appVersion` | `() String` | 设置页「当前版本」显示 |
 | `appVersionCode` | `() int` | 版本比较 |
