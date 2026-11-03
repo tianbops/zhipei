@@ -22,6 +22,17 @@ allprojects {
         google()
         mavenCentral()
     }
+
+    // Kotlin 1.8 merged the JDK 7/8 extension classes into kotlin-stdlib.
+    // Align legacy transitive artifacts to the same version so Android test
+    // variants do not package duplicate classes from 1.8.x and 1.6.x jars.
+    configurations.configureEach {
+        resolutionStrategy.force(
+            'org.jetbrains.kotlin:kotlin-stdlib:1.8.22',
+            'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22',
+            'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
+        )
+    }
 }
 
 task clean(type: Delete) {

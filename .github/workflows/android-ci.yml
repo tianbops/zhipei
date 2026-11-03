@@ -5,7 +5,7 @@ name: Android build verification
 # （push + pull_request → main），步骤是严格的包含关系，每次提交都跑两遍
 # debug 构建等于双倍 CI 分钟数。合并后保留全部更严格的步骤：
 #   依赖审计 / 桥接契约 / 模板漂移 / Debug 构建（均为阻塞项）
-#   + 模拟器启动冒烟（continue-on-error，非阻塞）
+#   + Android 模拟器主题切换仪器测试与应用启动冒烟（阻塞验收）
 # 正式发版仍由 android.yml（仅 tag v* / 手动）负责，职责不变。
 # 注意：main 分支保护要求本 job 的检查名 `android-debug-build`，改名须同步改保护规则。
 on:
@@ -20,7 +20,7 @@ permissions:
 jobs:
   android-debug-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -66,14 +66,26 @@ jobs:
       - name: Build debug APK (verification only)
         run: cd android && ./gradlew assembleDebug --no-daemon
 
-      - name: Launch app in Android Emulator (non-blocking)
-        # 模拟器仅作附加冒烟；限制单步时间，启动环境异常时不占满整个构建任务窗口。
-        timeout-minutes: 12
-        continue-on-error: true
+      # Linux emulator must use KVM. Without this permission it silently falls back
+      # to software emulation; the last CI boot took 473 seconds.
+      - name: Enable and verify KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 0666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          ls -l /dev/kvm
+
+      - name: Run Android theme-switch instrumentation test
+        # 冷启动模拟器后再执行仪器测试；保留足够诊断窗口并在失败时输出 logcat。
+        timeout-minutes: 20
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 34
           arch: x86_64
           profile: pixel_6
+          disable-linux-hw-accel: false
+          emulator-boot-timeout: 600
           script: |
-            set -eu; adb install -r android/app/build/outputs/apk/debug/app-debug.apk; adb shell monkey -p com.tianbops.zhipei 1; for attempt in $(seq 1 30); do if adb shell pidof com.tianbops.zhipei >/dev/null 2>&1; then break; fi; sleep 2; done; adb shell pidof com.tianbops.zhipei >/dev/null; sleep 10; if adb logcat -d -t 5000 | grep -E "FATAL EXCEPTION|Process: com.tianbops.zhipei, PID:"; then echo "::error::Android app crashed during emulator startup"; exit 1; fi
+            set -eu; cd "$GITHUB_WORKSPACE/android"; set +e; timeout 10m ./gradlew connectedDebugAndroidTest --no-daemon --console=plain --info --stacktrace; test_status=$?; set -e; if [ "$test_status" -ne 0 ]; then echo "::error::Android instrumentation test failed or exceeded its 10-minute diagnostic limit (exit $test_status)"; adb logcat -d -t 10000 | tail -n 500; exit "$test_status"; fi; cd "$GITHUB_WORKSPACE"; adb install -r android/app/build/outputs/apk/debug/app-debug.apk; adb shell monkey -p com.tianbops.zhipei 1; for attempt in $(seq 1 30); do if adb shell pidof com.tianbops.zhipei >/dev/null 2>&1; then break; fi; sleep 2; done; adb shell pidof com.tianbops.zhipei >/dev/null; sleep 10; if adb logcat -d -t 5000 | grep -E "FATAL EXCEPTION|Process: com.tianbops.zhipei, PID:"; then echo "::error::Android app crashed during emulator startup"; exit 1; fi
