@@ -24,6 +24,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # 版本一致性检查要读最新 vX.Y.Z tag；浅克隆会让它静默跳过。
+          fetch-depth: 0
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
@@ -56,6 +59,11 @@ jobs:
         # 启动屏必须继承 Theme.SplashScreen 并按 setKeepOnScreenCondition 等网页首帧，
         # 否则会退回「窗口首帧即退出」——远程首屏尚未绘制，用户会看到 1~2 秒空窗
         run: npm run check:launch
+      - name: Check version consistency (advisory)
+        # 2026-11-03 体检：tag v1.0.29 时 build.gradle 仍写 1.0.22。构建期由 android.yml
+        # 用 sed 注入、不提交，而 main 要求 PR，自动化无法回写 —— 故这里只告警不判红，
+        # 发版前用 `npm run check:version -- --strict` 硬把关（见 AGENTS 发布检查单）。
+        run: npm run check:version
       - name: Check native popup theme synchronization
         # Web 深浅主题独立于系统外观，WebView 原生选择/日期弹层必须同步宿主 AppCompat uiMode。
         run: npm run check:theme
