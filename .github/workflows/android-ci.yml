@@ -67,7 +67,7 @@ jobs:
         run: cd android && ./gradlew assembleDebug --no-daemon
 
       - name: Run Android theme-switch instrumentation test
-        # 在真实 Android 模拟器中执行原生主题切换测试，再做应用启动冒烟。
+        # 为仪器测试设置独立 8 分钟上限，并在异常退出时输出 logcat，避免 CI 只给出外层超时。
         timeout-minutes: 12
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -75,4 +75,4 @@ jobs:
           arch: x86_64
           profile: pixel_6
           script: |
-            set -eu; cd "$GITHUB_WORKSPACE/android"; ./gradlew connectedDebugAndroidTest --no-daemon; cd "$GITHUB_WORKSPACE"; adb shell monkey -p com.tianbops.zhipei 1; for attempt in $(seq 1 30); do if adb shell pidof com.tianbops.zhipei >/dev/null 2>&1; then break; fi; sleep 2; done; adb shell pidof com.tianbops.zhipei >/dev/null; sleep 10; if adb logcat -d -t 5000 | grep -E "FATAL EXCEPTION|Process: com.tianbops.zhipei, PID:"; then echo "::error::Android app crashed during emulator startup"; exit 1; fi
+            set -eu; cd "$GITHUB_WORKSPACE/android"; set +e; timeout 8m ./gradlew connectedDebugAndroidTest --no-daemon --console=plain --info --stacktrace; test_status=$?; set -e; if [ "$test_status" -ne 0 ]; then echo "::error::Android instrumentation test failed or exceeded its 8-minute diagnostic limit (exit $test_status)"; adb logcat -d -t 10000 | tail -n 500; exit "$test_status"; fi; cd "$GITHUB_WORKSPACE"; adb shell monkey -p com.tianbops.zhipei 1; for attempt in $(seq 1 30); do if adb shell pidof com.tianbops.zhipei >/dev/null 2>&1; then break; fi; sleep 2; done; adb shell pidof com.tianbops.zhipei >/dev/null; sleep 10; if adb logcat -d -t 5000 | grep -E "FATAL EXCEPTION|Process: com.tianbops.zhipei, PID:"; then echo "::error::Android app crashed during emulator startup"; exit 1; fi
