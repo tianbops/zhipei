@@ -6,6 +6,7 @@ import static org.junit.Assert.assertTrue;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
+import android.util.Log;
 
 import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.test.core.app.ActivityScenario;
@@ -22,6 +23,7 @@ import java.lang.reflect.Method;
 /** 原生宿主与状态栏主题切换的真实模拟器仪器测试。 */
 @RunWith(AndroidJUnit4.class)
 public class ExampleInstrumentedTest {
+    private static final String TAG = "ZPThemeTest";
 
     @Test
     public void useAppContext() {
@@ -29,9 +31,11 @@ public class ExampleInstrumentedTest {
         assertEquals("com.tianbops.zhipei", appContext.getPackageName());
     }
 
-    @Test
+    @Test(timeout = 120_000)
     public void statusBarRemainsTransparentAndThemeAwareAcrossRepeatedSwitches() {
+        Log.i(TAG, "Starting MainActivity scenario");
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            Log.i(TAG, "MainActivity scenario launched");
             int light = Color.parseColor("#F6F7F9");
             int dark = Color.parseColor("#121826");
             int[] colors = {dark, light, dark, light, dark, light, dark, light};
@@ -40,12 +44,15 @@ public class ExampleInstrumentedTest {
             for (int i = 0; i < colors.length; i++) {
                 final int expectedColor = colors[i];
                 final boolean expectedDark = darkModes[i];
+                Log.i(TAG, "Starting theme transition " + (i + 1) + ", dark=" + expectedDark);
                 scenario.onActivity(activity -> {
                     invokeApplyChrome(activity, expectedColor, expectedDark);
                     assertWindowChrome(activity, expectedColor, expectedDark);
                 });
+                Log.i(TAG, "Completed theme transition " + (i + 1));
             }
         }
+        Log.i(TAG, "All theme transitions completed");
     }
 
     private static void invokeApplyChrome(MainActivity activity, int color, boolean dark) {
