@@ -13,7 +13,7 @@
 
 - `www/` 里**只有** `offline.html`——没有业务页面，没有业务 JS，没有 CSS。
 - 所有界面、逻辑、样式、会话，全部来自 Web 端仓库 `tianbops/zhipei-one`。
-- 本仓只做三件事：**加载远程页面** + **暴露 9 个原生桥方法** + **打包签名分发**。
+- 本仓只做三件事：**加载远程页面** + **暴露 10 个原生桥方法** + **打包签名分发**。
 - **没有本地数据层**：无 SharedPreferences / SQLite / Room / 文件缓存。
 
 因此：改界面不要在这里改（去 Web 仓）；这里的每一行代码都影响**所有**用户的启动与原生能力。
@@ -106,7 +106,7 @@ git push origin main
   WebView 里 back 只退回上一页，退不出应用。
 - 契约由 `npm run check:back`（`scripts/check-back-channel.mjs`）守，CI 在 assembleDebug 前执行。
 
-## 5. 9 个原生桥方法（删改即破坏网页端功能）
+## 5. 10 个原生桥方法（删改即破坏网页端功能）
 
 | 方法 | 签名 | 网页端用途 |
 |---|---|---|
@@ -118,6 +118,7 @@ git push origin main
 | `haptic` | `(String kind)` | 底部导航/底部按钮触感（light/medium/success/warn） |
 | `webReady` | `()` | 网页首帧就绪，撤下启动屏（js/boot-ready.js 调用） |
 | `downloadApk` | `(String url)` | 设置页「更新到 Vx.x.x」 |
+| `shareText` | `(String title, String text)` | 运单/数据页分享，调起系统面板 |
 | `exitApp` | `()` | 退出 |
 
 改任何一个，必须同时更新：
@@ -132,9 +133,10 @@ git push origin main
 
 - 主题 `AppTheme.NoActionBarLaunch` 继承 `Theme.SplashScreen`（androidx core-splashscreen）；
 - `MainActivity.installLaunchScreen()` 在 `super.onCreate()` **之前** `installSplashScreen`，
-  并 `setKeepOnScreenCondition(() -> !sWebReady)`，6 秒超时兜底；
+  并 `setKeepOnScreenCondition(() -> !webReady)`，15 秒超时兜底（数值待弱网实测后调整）；
 - 网页侧 `js/boot-ready.js` 在双 rAF（首帧上屏）后调 `webReady()` 放行；
-- 启动期底色按「上次网页主题（SharedPreferences）→ 系统外观」推断，不再写死深色。
+- 启动底色**固定品牌黑 `#05070A`**（logo 自带底色，`values` 与 `values-night` 同值），
+  不随系统外观；运行期页面外观仍可切换。见 Web 仓 `docs/adr/0005-品牌启动页与外观契约.md`。
 
 任一环失效都不会报错，只会让空窗回来。`npm run check:launch` 守这条链路。
 
@@ -150,6 +152,18 @@ GitHub tag v* → android.yml 构建签名 → Releases 附件 APK
 
 改这条链要同时动三个地方（Release、manifest、网页端三态文案），
 漏一处就会出现"永远显示已是最新"或"永远提示更新"。
+
+### 发布检查单（版本号）
+
+`versionName` / `versionCode` 的真值是 **git tag**，但 `android/app/build.gradle` 里的
+数字是**构建期占位**：`android.yml` 用 `sed` 注入后直接编译，**不会回写仓库**；main
+又要求 PR，自动化没有合规路径把结果提交回去。2026-11-03 体检时，tag 已到 v1.0.29，
+仓库文件还写着 1.0.22。
+
+- **发版前**：`npm run check:version -- --strict` 必须绿（不一致就退出 1）；
+- **发版后**：跑 `scripts/sync-version.sh`，提交 `chore(version): align to vX.Y.Z`；
+- **CI**：`android-ci` 里这条检查只告警不判红（否则每次发版后所有 PR 都会红），
+  所以不能把"CI 绿"当成版本已经对齐。
 
 ## 7. 提交规范
 
