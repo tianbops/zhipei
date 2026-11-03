@@ -33,7 +33,7 @@ check(colors === templateColors && nightColors === templateNightColors, "日间/
 check(styles.includes('<item name="android:statusBarColor">@android:color/transparent</item>'), "日间主题声明透明状态栏");
 check(styles.includes('<item name="android:windowLightStatusBar">true</item>'), "日间主题默认使用深色状态栏图标");
 check(nightStyles.includes('<item name="android:statusBarColor">@android:color/transparent</item>'), "夜间主题声明透明状态栏");
-check(nightStyles.includes('<item name="android:windowLightStatusBar">false</item>'), "夜间主题默认使用浅色状态栏图标");
+check(nightStyles.includes('<item name="android:windowLightStatusBar">true</item>'), "夜间系统配置仍使用稳定的固定主题默认图标，运行时再由网页主题覆盖");
 check(styles.includes("Theme.AppCompat.Light.NoActionBar")
   && nightStyles.includes("Theme.AppCompat.Light.NoActionBar")
   && !styles.includes("Theme.AppCompat.DayNight")
