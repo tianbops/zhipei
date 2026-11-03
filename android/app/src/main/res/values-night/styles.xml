@@ -8,5 +8,8 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <!-- 启动屏退出后的窗口底色同样钉成主题承接色，避免任何时刻露出继承的近白底板
+             （状态栏区透明，露出的正是这块 windowBackground / DecorView 背景）。 -->
+        <item name="android:windowBackground">@color/splashBackground</item>
     </style>
 </resources>

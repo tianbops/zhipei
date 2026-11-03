@@ -15,6 +15,9 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <!-- 启动屏退出后的窗口底色同样钉成主题承接色，避免任何时刻露出继承的近白底板
+             （状态栏区透明，露出的正是这块 windowBackground / DecorView 背景）。 -->
+        <item name="android:windowBackground">@color/splashBackground</item>
     </style>
 
     <!-- 启动主题（2026-10-30，v1.0.22）
@@ -26,6 +29,11 @@
          postSplashScreenTheme 是启动屏退出后切回的主题，必须是 AppCompat 系。 -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/splashBackground</item>
+        <!-- 起始窗口底色必须显式钉死：不声明就继承父级（Theme.SplashScreen / AppCompat.Light）
+             的近白 windowBackground，冷启动会在黑色启动屏之前先露一帧纯白 —— 深浅外观都
+             躲不过，因为本壳的原生宿主主题刻意不随系统 DayNight 切换（见 MainActivity）。
+             取与启动屏同一个 @color/splashBackground，交接处零色差。 -->
+        <item name="android:windowBackground">@color/splashBackground</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/splash_badge</item>
         <item name="windowSplashScreenAnimationDuration">240</item>
         <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>

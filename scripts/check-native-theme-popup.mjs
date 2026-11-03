@@ -79,6 +79,16 @@ const capacitor = JSON.parse(read("capacitor.config.json"));
 check(capacitor.plugins?.SplashScreen?.backgroundColor === "#05070A",
   "Capacitor 启动屏背景与原生 logo 底色一致");
 
+// 起始窗口 / 宿主主题的 windowBackground 必须显式钉死。
+// 不声明则继承父级（Theme.SplashScreen / AppCompat.Light）的近白色：冷启动会在黑色
+// 启动屏之前先露一帧纯白，且透明状态栏区域露出的也正是这块底板 —— 深浅外观都躲不过，
+// 因为本壳的原生宿主主题刻意不随系统 DayNight 切换。
+const BG_ITEM = '<item name="android:windowBackground">@color/splashBackground</item>';
+check(styles.includes(BG_ITEM), "日间宿主主题显式声明 windowBackground，不继承近白底板");
+check(nightStyles.includes(BG_ITEM), "夜间宿主主题显式声明 windowBackground，不继承近白底板");
+check(/name="AppTheme\.NoActionBarLaunch"[\s\S]*?android:windowBackground">@color\/splashBackground/.test(styles),
+  "启动主题（冷启动起始窗口）同样钉死 windowBackground，交接零色差");
+
 if (errors.length) {
   console.error("\n✗ 原生主题/状态栏契约失败：");
   for (const error of errors) console.error("  - " + error);
