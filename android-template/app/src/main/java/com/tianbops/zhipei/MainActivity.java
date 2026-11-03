@@ -349,15 +349,19 @@ public class MainActivity extends BridgeActivity {
      * 把状态栏高度送到网页的 --zp-e2e-top。页面自己也会在首帧前调 statusBarInset()
      * 主动读一次，这里只是兜底（inset 迟于页面脚本、或运行中发生变化）。
      * 页面尚未加载时 evaluateJavascript 会失败，忽略即可——那时网页还读不到变量。
+     *
+     * 传进来的是物理 px，写进 CSS 前必须换算成 CSS px（= dp）：
+     * WebView 的 1 CSS px 对应 1 dp，直接把物理 px 塞进样式表，在 3x 屏上会被放大三倍。
      */
     private void pushTopInsetToWeb(int px, WebView webView) {
         if (webView == null) return;
+        final int cssPx = toCssPx(px);
         try {
             webView.post(() -> {
                 try {
                     webView.evaluateJavascript(
                             "(function(){try{document.documentElement.style.setProperty('--zp-e2e-top','"
-                                    + px + "px')}catch(e){}})()",
+                                    + cssPx + "px')}catch(e){}})()",
                             null);
                 } catch (Throwable ignored) {
                     // 页面未就绪时无 JS 上下文，等下次 inset 变化或页面自读。
@@ -365,6 +369,19 @@ public class MainActivity extends BridgeActivity {
             });
         } catch (Throwable ignored) {
         }
+    }
+
+    /**
+     * 物理像素 → CSS 像素（dp）。状态栏高度来自 getDimensionPixelSize / Insets，
+     * 两者都是物理 px；而页面里的 --zp-e2e-top 参与 padding 与色带高度，单位是 CSS px。
+     * 少了这一步，同一台设备上「色带高度」会等于状态栏的物理像素数——
+     * 3x 屏上 24dp 的状态栏会被当成 72dp，标题被推下去一大截，页面可视区变小。
+     */
+    private int toCssPx(int physicalPx) {
+        if (physicalPx <= 0) return 0;
+        float density = getResources().getDisplayMetrics().density;
+        if (density <= 0f) return physicalPx;
+        return Math.max(1, Math.round(physicalPx / density));
     }
 
     /**
@@ -469,11 +486,13 @@ public class MainActivity extends BridgeActivity {
          *      刘海 cutout，不含状态栏高度，普通机型返回 0，拿它当判据会禁用掉色带。
          *   ② 给高度——色带要正好盖住状态栏，高了会吃掉内容，矮了会被图标压住。
          *
-         * 返回 px（已含 density）。0 表示尚未拿到 inset（页面此时应回退到 env 兜底）。
+         * 返回 CSS px（dp），不是物理像素：页面拿它直接写 --zp-e2e-top 并同时用于
+         * 色带高度与 padding，单位必须是 CSS px。内部保存的是物理 px，这里换算后返回。
+         * 0 表示尚未拿到 inset（页面此时应回退到 env 兜底）。
          */
         @JavascriptInterface
         public int statusBarInset() {
-            return statusBarInsetPx;
+            return toCssPx(statusBarInsetPx);
         }
 
         /**

@@ -98,6 +98,39 @@ for (const rel of SOURCES) {
     if (!stripComments(insetRaw).includes("statusBarInsetPx")) {
       errors.push(`${rel}: statusBarInset() 必须返回 statusBarInsetPx（不要另算一份，避免与 inset 监听不同源）`);
     }
+    /* 单位：原生拿到的是物理 px，网页的 --zp-e2e-top 是 CSS px（1 CSS px = 1 dp）。
+       直接把物理值送过去，3x 屏上 24dp 会被当成 72dp —— 标题被推下去一大截、
+       底部内容被挤出屏幕，看起来像「上方空白很大、页面被压缩」。
+       这条以前没有，所以 v1.0.32 真机才会出现该现象而护栏全绿。 */
+    if (!/toCssPx\s*\(\s*statusBarInsetPx\s*\)/.test(stripComments(insetRaw))) {
+      errors.push(
+        `${rel}: statusBarInset() 必须返回 toCssPx(statusBarInsetPx)。` +
+        `物理 px 直接写进 CSS 会被按 density 放大（高密度屏上色带高度翻 2~3 倍）`
+      );
+    }
+  }
+
+  // ---- 单位：推送路径同样要换算 ----
+  const pushRaw = methodBody(src, "private void pushTopInsetToWeb(");
+  if (!pushRaw) {
+    errors.push(`${rel}: 找不到 pushTopInsetToWeb()——inset 迟于页面脚本时靠它补写色带高度`);
+  } else {
+    const push = stripComments(pushRaw);
+    if (!push.includes("toCssPx(")) {
+      errors.push(`${rel}: pushTopInsetToWeb 必须先 toCssPx(px) 再写 CSS 变量，不能直接拼物理像素`);
+    }
+    if (/\+\s*px\s*\+/.test(push)) {
+      errors.push(`${rel}: pushTopInsetToWeb 仍在拼接原始 px（物理像素），会把色带高度放大 density 倍`);
+    }
+    if (!/\+\s*cssPx\s*\+/.test(push)) {
+      errors.push(`${rel}: pushTopInsetToWeb 应写入换算后的 cssPx`);
+    }
+  }
+  const convRaw = methodBody(src, "private int toCssPx(");
+  if (!convRaw) {
+    errors.push(`${rel}: 找不到 toCssPx()——物理像素到 CSS 像素的换算必须集中在一处`);
+  } else if (!/\/\s*density/.test(stripComments(convRaw))) {
+    errors.push(`${rel}: toCssPx() 必须除以 density（getResources().getDisplayMetrics().density）`);
   }
   if (!/private\s+volatile\s+int\s+statusBarInsetPx/.test(code)) {
     errors.push(`${rel}: statusBarInsetPx 必须是 volatile —— JS 桥线程读、UI 线程写`);

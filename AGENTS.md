@@ -113,7 +113,7 @@ git push origin main
 | 方法 | 签名 | 网页端用途 |
 |---|---|---|
 | `applyTheme` | `(String colorHex, boolean darkBg)` | 导航栏底色 + 两组图标明暗跟随主题 |
-| `statusBarInset` | `() int` | 状态栏高度 px。**方法存在本身**是 edge-to-edge 能力协商：网页据此让页面接管状态栏区域；旧壳没有它则退回「让位 + 8px」旧布局 |
+| `statusBarInset` | `() int` | 状态栏高度 **CSS px（= dp，已按 density 换算；不是物理像素）**。**方法存在本身**是 edge-to-edge 能力协商：网页据此让页面接管状态栏区域；旧壳没有它则退回「让位 + 8px」旧布局 |
 | `setFontScale` | `(float scale)` | 设置页字号调节 |
 | `appVersion` | `() String` | 设置页「当前版本」显示 |
 | `appVersionCode` | `() int` | 版本比较 |
