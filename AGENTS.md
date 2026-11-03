@@ -38,6 +38,7 @@
 | `www/` | 仅 `offline.html` | 不要往里放业务资源 |
 | `scripts/check-bridge-contract.mjs` | 桥接契约守卫 | **必跑** |
 | `scripts/check-template-drift.mjs` | 模板漂移守卫 | **必跑** |
+| `scripts/check-statusbar-sync.mjs` | 状态栏换色时序守卫 | **必跑** |
 | `assets-src/` | 图标源文件 | 改图标跑 `npm run android:icons` |
 
 **模板漂移的代价（历史事故）**：`android-template/` 与实际 `android/` 不一致时，
@@ -53,6 +54,7 @@ git checkout main
 npm ci
 npm run check:bridge          # 桥接契约（必须绿）
 npm run check:template-drift  # 模板漂移（必须绿）
+npm run check:statusbar       # 状态栏换色时序（必须绿）
 npx cap sync android
 cd android && ./gradlew assembleDebug --no-daemon   # 构建验证
 

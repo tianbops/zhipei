@@ -64,7 +64,8 @@ public class MainActivity extends BridgeActivity {
      *  volatile 是跨线程（JS 桥线程写、UI 线程每帧读）的可见性保证。 */
     private volatile boolean webReady = false;
 
-    private WebView webViewRef;
+    /** 引用在 UI 线程赋值，applyTheme() 会在 JS 桥线程读它（决定走哪条染色路径）。 */
+    private volatile WebView webViewRef;
     /** 返回键接管回调（AndroidX OnBackPressedDispatcher）。 */
     private OnBackPressedCallback backCallback;
     private SplashScreen splashScreen;
@@ -438,7 +439,23 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void applyTheme(String colorHex, boolean darkBg) {
             int color = parseColor(colorHex, chromeColor);
-            // JS 接口跑在 JavaBridge 线程，UI 操作必须切回主线程。
+            /* 与 WebView 的下一帧合成对齐，而不是立即换色。
+             *
+             * 真机实测（30fps 逐帧取状态栏与页面众数色，5 次切换中 4 次命中）：
+             * 网页改完 data-zp-theme 之后，WebView 还要 1 帧才把新色合成上屏；而
+             * DecorView.setBackgroundColor 是立即 invalidate、下一个 vsync 就画出来。
+             * 两边差 1 帧（约 33ms），屏幕上就是「状态栏已换色、页面还是旧色」的一条
+             * 错色带 —— 浅切深时像顶部闪一道白，深切浅时像闪一道黑。
+             *
+             * postOnAnimation 把换色排到下一个动画帧执行，与 WebView 提交同一拍。
+             * 只有用户主动切换走这条路径；启动时的初始染色仍立即执行，不能延后。
+             */
+            WebView wv = webViewRef;
+            if (wv != null && wv.isAttachedToWindow()) {
+                wv.postOnAnimation(() -> applyChrome(color, darkBg));
+                return;
+            }
+            // WebView 尚未挂载（或已分离）：没有合成帧可对齐，退回立即执行。
             runOnUiThread(() -> applyChrome(color, darkBg));
         }
 
